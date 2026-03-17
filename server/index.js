@@ -428,8 +428,13 @@ if (fs.existsSync(distPath)) {
     console.log('📦 Serving production frontend from dist/');
 }
 
-// ─── Start Server ─────────────────────────────────────────────────────────────
-app.listen(PORT, () => {
-    console.log(`\n🏗️  BuildX AI Backend running on http://localhost:${PORT}`);
-    console.log(`   API: http://localhost:${PORT}/api\n`);
-});
+// ─── Export app for Vercel serverless ─────────────────────────────────────────
+export default app;
+
+// ─── Start Server (local dev / Render only — Vercel uses the export above) ───
+if (!process.env.VERCEL) {
+    app.listen(PORT, () => {
+        console.log(`\n🏗️  BuildX AI Backend running on http://localhost:${PORT}`);
+        console.log(`   API: http://localhost:${PORT}/api\n`);
+    });
+}
