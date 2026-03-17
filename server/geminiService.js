@@ -1,12 +1,9 @@
 /**
- * BuildX AI – Server-Side Gemini AI Service
- * All Gemini API calls run here on the backend — the API key NEVER reaches the browser.
- * Features automatic model fallback and retry on rate limits.
+ * BuildX AI – Server-Side Gemini AI Service (BYOK — Bring Your Own Key)
+ * Each request creates its own Gemini client using the user-provided API key.
+ * No global state — the API key is passed per-request from the route handler.
  */
 import { GoogleGenerativeAI } from '@google/generative-ai';
-
-let genAI = null;
-let currentApiKey = null;
 
 // Models to try in order (fallback chain)
 const MODEL_CHAIN = [
@@ -35,21 +32,7 @@ function withTimeout(promise, ms, label = 'API call') {
 }
 
 /**
- * Initialize or update the Gemini client with an API key.
- * Key can come from env var or from user input via /api/ai/set-key.
- */
-export function initializeGemini(apiKey) {
-  const cleanKey = sanitizeApiKey(apiKey);
-  if (!cleanKey || cleanKey.length < 10) {
-    throw new Error('API key is too short or contains invalid characters.');
-  }
-  genAI = new GoogleGenerativeAI(cleanKey);
-  currentApiKey = cleanKey;
-  console.log('✅ Gemini initialized on server (key length:', cleanKey.length, ')');
-}
-
-/**
- * Validate API key format (no test call to save quota)
+ * Validate API key format (no test call — saves quota)
  */
 export function validateApiKey(apiKey) {
   const cleanKey = sanitizeApiKey(apiKey);
@@ -59,17 +42,24 @@ export function validateApiKey(apiKey) {
   if (!cleanKey.startsWith('AIza') || cleanKey.length < 30) {
     return { valid: false, error: 'This doesn\'t look like a valid Google API key. Keys start with "AIza" and are about 39 characters long.' };
   }
-  return { valid: true, model: MODEL_CHAIN[0] };
+  return { valid: true };
 }
 
-export function isInitialized() {
-  return genAI !== null;
+/**
+ * Create a fresh Gemini client from a user-provided API key.
+ * Called per-request — no global state.
+ */
+function createClient(apiKey) {
+  const cleanKey = sanitizeApiKey(apiKey);
+  const validation = validateApiKey(cleanKey);
+  if (!validation.valid) throw new Error(validation.error);
+  return new GoogleGenerativeAI(cleanKey);
 }
 
 /**
  * Try a Gemini API call with automatic model fallback and retry
  */
-async function callWithFallback(callFn, maxRetries = 3) {
+async function callWithFallback(genAI, callFn, maxRetries = 3) {
   let lastError = null;
   let hadRateLimit = false;
   let hadDailyExhaustion = false;
@@ -91,17 +81,14 @@ async function callWithFallback(callFn, maxRetries = 3) {
           console.warn(`⏰ ${modelName} timed out, trying next model...`);
           break;
         }
-
         if (msg.includes('404') || msg.includes('not found') || msg.includes('NOT_FOUND')) {
           console.warn(`⏭️ ${modelName} not available (404), skipping...`);
           if (!hadRateLimit) lastError = error;
           break;
         }
-
         if (msg.includes('API_KEY_INVALID') || msg.includes('401') || msg.includes('403') || msg.toLowerCase().includes('expired')) {
-          throw new Error('API key has expired or is invalid. Please reset your key and try again.');
+          throw new Error('API key has expired or is invalid. Please check your key and try again.');
         }
-
         if (msg.includes('429') || msg.includes('quota') || msg.includes('RESOURCE_EXHAUSTED')) {
           hadRateLimit = true;
           if (msg.includes('limit: 0') && (msg.includes('PerDay') || msg.includes('PerModelPerDay'))) {
@@ -116,11 +103,9 @@ async function callWithFallback(callFn, maxRetries = 3) {
             await sleep(waitMs);
             continue;
           } else {
-            console.warn(`❌ ${modelName} still rate-limited after ${maxRetries} retries`);
             break;
           }
         }
-
         if (attempt < maxRetries) {
           console.warn(`⚠️ Error on ${modelName}, retrying in 3s...`, msg);
           await sleep(3000);
@@ -146,7 +131,7 @@ async function callWithFallback(callFn, maxRetries = 3) {
 }
 
 /**
- * Parse AI response JSON with 4-strategy recovery (including truncated JSON repair)
+ * Parse AI response JSON with 4-strategy recovery
  */
 function parseAIResponse(text) {
   if (!text || text.trim().length === 0) {
@@ -154,50 +139,39 @@ function parseAIResponse(text) {
   }
   console.log('AI response length:', text.length, 'chars');
 
-  // Strategy 1: Direct parse
   try {
-    const cleaned = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-    return JSON.parse(cleaned);
+    return JSON.parse(text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim());
   } catch (e1) {}
 
-  // Strategy 2: Code block extraction
   try {
     const match = text.match(/```(?:json)?\s*\n?([\s\S]*?)\n?\s*```/);
     if (match) return JSON.parse(match[1].trim());
   } catch (e2) {}
 
-  // Strategy 3: Brace extraction
   try {
     const first = text.indexOf('{');
     const last = text.lastIndexOf('}');
-    if (first !== -1 && last > first) {
-      return JSON.parse(text.substring(first, last + 1));
-    }
+    if (first !== -1 && last > first) return JSON.parse(text.substring(first, last + 1));
   } catch (e3) {}
 
-  // Strategy 4: Repair truncated JSON
   try {
     let candidate = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
     const startIdx = candidate.indexOf('{');
     if (startIdx === -1) throw new Error('No JSON start');
-    candidate = candidate.substring(startIdx);
+    candidate = candidate.substring(startIdx)
+      .replace(/,\s*"[^"]*"\s*:\s*"[^"]*$/, '')
+      .replace(/,\s*"[^"]*"\s*:\s*$/, '')
+      .replace(/,\s*"[^"]*$/, '')
+      .replace(/,\s*$/, '');
 
-    candidate = candidate.replace(/,\s*"[^"]*"\s*:\s*"[^"]*$/, '')
-                         .replace(/,\s*"[^"]*"\s*:\s*$/, '')
-                         .replace(/,\s*"[^"]*$/, '')
-                         .replace(/,\s*$/, '');
-
-    let braces = 0, brackets = 0;
-    let inString = false, escape = false;
+    let braces = 0, brackets = 0, inString = false, escape = false;
     for (const ch of candidate) {
       if (escape) { escape = false; continue; }
       if (ch === '\\') { escape = true; continue; }
       if (ch === '"') { inString = !inString; continue; }
       if (inString) continue;
-      if (ch === '{') braces++;
-      else if (ch === '}') braces--;
-      else if (ch === '[') brackets++;
-      else if (ch === ']') brackets--;
+      if (ch === '{') braces++; else if (ch === '}') braces--;
+      if (ch === '[') brackets++; else if (ch === ']') brackets--;
     }
     while (brackets > 0) { candidate += ']'; brackets--; }
     while (braces > 0) { candidate += '}'; braces--; }
@@ -212,15 +186,11 @@ function parseAIResponse(text) {
 }
 
 /**
- * Analyze construction site photos and generate engineering report
- * @param {Array} photos - Array of {side, mimeType, base64} objects
- * @param {Object} specs - Building specifications
- * @param {Object|null} siteLocation - GPS location data
+ * Analyze construction site photos — per-request client from user's key
  */
-export async function analyzeSite(photos, specs, siteLocation = null) {
-  if (!genAI) throw new Error('Gemini not initialized. Please set your API key.');
+export async function analyzeSite(apiKey, photos, specs, siteLocation = null) {
+  const genAI = createClient(apiKey);
 
-  // Build image parts from pre-encoded base64
   const imageParts = photos.map(p => ({
     inlineData: { mimeType: p.mimeType, data: p.base64 },
   }));
@@ -247,18 +217,17 @@ Use this location to determine:
   let buildingTypeContext = '';
   if (buildingType !== 'residential_house') {
     const typeDescriptions = {
-      compound_wall: 'This is a COMPOUND/BOUNDARY WALL. Focus on wall-specific engineering: footing design, wall stability, wind resistance, and pillar spacing.',
-      retaining_wall: 'This is a RETAINING WALL. Focus on lateral earth pressure, drainage, counterfort design, and sliding/overturning stability.',
-      water_tank: 'This is a WATER TANK/RESERVOIR. Focus on waterproofing, hydrostatic pressure, tank wall thickness, and water tightness per IS 3370.',
-      commercial_building: 'This is a COMMERCIAL BUILDING. Consider higher live loads, larger spans, fire safety, accessibility.',
-      warehouse: 'This is a WAREHOUSE/INDUSTRIAL building. Consider large clear spans, portal frame design, industrial flooring.',
-      multi_story: 'This is a MULTI-STORY BUILDING. Focus on frame design, shear walls, elevator core, seismic provisions.',
-      garage: 'This is a GARAGE/PARKING structure. Consider vehicle loads, clear height, ramp design, ventilation.',
-      boundary_fence: 'This is a BOUNDARY FENCE/PILLAR structure. Focus on pillar foundation, spacing, height-to-thickness ratio.',
+      compound_wall: 'This is a COMPOUND/BOUNDARY WALL. Focus on wall-specific engineering.',
+      retaining_wall: 'This is a RETAINING WALL. Focus on lateral earth pressure and stability.',
+      water_tank: 'This is a WATER TANK/RESERVOIR. Focus on waterproofing and hydrostatic pressure.',
+      commercial_building: 'This is a COMMERCIAL BUILDING. Consider higher live loads and fire safety.',
+      warehouse: 'This is a WAREHOUSE/INDUSTRIAL building. Consider large clear spans.',
+      multi_story: 'This is a MULTI-STORY BUILDING. Focus on frame design and seismic provisions.',
+      garage: 'This is a GARAGE/PARKING structure. Consider vehicle loads and ventilation.',
+      boundary_fence: 'This is a BOUNDARY FENCE/PILLAR structure. Focus on pillar foundation and spacing.',
     };
     buildingTypeContext = buildingType in typeDescriptions
-      ? `\n**IMPORTANT – Building Type:** ${typeDescriptions[buildingType]}\n`
-      : '';
+      ? `\n**IMPORTANT – Building Type:** ${typeDescriptions[buildingType]}\n` : '';
   }
 
   const prompt = `You are a Senior Structural Engineer and Project Manager. 
@@ -293,7 +262,7 @@ Return your response as a valid JSON object with the following structure:
     "formulasUsed": ["Foundation formulas used for this calculation"]
   },
   "wiringAndElectrical": {
-    "layoutStrategy": "Step-by-step guide on how to lay wires, conduit placement, and distribution board location",
+    "layoutStrategy": "Step-by-step guide on wiring, conduit placement, and distribution board location",
     "safetyProtocols": "Earthing requirements and circuit protection advice",
     "estimatedPoints": "Estimate of light, fan, and power points needed for this area"
   },
@@ -309,22 +278,14 @@ Return your response as a valid JSON object with the following structure:
     "aggregateCft": 0,
     "steelTons": 0,
     "bricksBlocks": 0,
-    "currentMarketRateNotes": "Estimation of total cost based on common current market prices (note: user should verify locally)"
+    "currentMarketRateNotes": "Estimation of total cost based on current market prices"
   },
   "stepByStepGuide": [
-    {
-      "phase": "e.g., Excavation",
-      "steps": ["Task 1", "Task 2"],
-      "safetyWarning": "Phase-specific safety warning"
-    }
+    { "phase": "e.g., Excavation", "steps": ["Task 1", "Task 2"], "safetyWarning": "Phase-specific warning" }
   ],
-  "safetyWarnings": [
-    "Critical site-wide safety measures for non-professionals"
-  ],
+  "safetyWarnings": ["Critical site-wide safety measures for non-professionals"],
   "blueprintDescription": "Extremely detailed architectural description for generating a 3D visualization.",
-  "formulasAndCalculations": [
-    "List of every formula applied: Area calculation, Concrete volume, Steel percentage, etc."
-  ]
+  "formulasAndCalculations": ["List of every formula applied"]
 }
 
 IMPORTANT: 
@@ -334,13 +295,10 @@ IMPORTANT:
 
   let result;
   try {
-    result = await callWithFallback(async (model) => {
+    result = await callWithFallback(genAI, async (model) => {
       const res = await model.generateContent({
         contents: [{ role: 'user', parts: [{ text: prompt }, ...imageParts] }],
-        generationConfig: {
-          responseMimeType: 'application/json',
-          maxOutputTokens: 65536,
-        },
+        generationConfig: { responseMimeType: 'application/json', maxOutputTokens: 65536 },
       });
       return res;
     });
@@ -348,13 +306,13 @@ IMPORTANT:
     if (apiError.message.includes('quota is fully used up') || apiError.message.includes('rate-limited')) {
       console.warn('API FALLBACK: Returning mock data due to quota limits.');
       return {
-        siteAssessment: { soilNature: "Simulated Sand/Clay soil mixture. Estimated bearing capacity of 150 kN/m².", terrainAnalysis: "Flat terrain with good natural drainage.", safetyConcerns: ["Uneven ground could cause tripping or material sliding."] },
-        foundationEngineering: { recommendedType: "Isolated Column Footing", depth: "1.5 meters", width: "1.2 x 1.2 meters", reinforcement: "12mm bars at 150mm c/c spacing both ways", formulasUsed: ["Bearing Capacity Formula", "Bending Moment Calculation"] },
-        wiringAndElectrical: { layoutStrategy: "Main distribution board at entrance.", safetyProtocols: "Proper earth pit installation (min 3m deep).", estimatedPoints: "15 light points, 8 fan points, 20 power sockets." },
-        concreteMixDesign: { targetGrade: "M20", ratio: "1:1.5:3", mixingInstructions: "Mix dry ingredients first. Add water slowly. Use within 45 minutes.", curingProcess: "Keep moist for 10-14 days." },
-        materialEstimateSummary: { cementBags: Math.ceil(specs.area * specs.floors * 0.4), sandCft: Math.ceil(specs.area * specs.floors * 1.8), aggregateCft: Math.ceil(specs.area * specs.floors * 1.3), steelTons: Number((specs.area * specs.floors * 0.0035).toFixed(2)), bricksBlocks: Math.ceil(specs.area * specs.floors * 8), currentMarketRateNotes: "Approximate fallback estimates." },
-        stepByStepGuide: [{ phase: "Excavation", steps: ["Mark layout", "Excavate to 1.5m", "Pour PCC bed"], safetyWarning: "Keep machinery back from trench edges." }],
-        safetyWarnings: ["Always wear hardhats", "Ensure scaffolding is secure"],
+        siteAssessment: { soilNature: "Simulated Sand/Clay soil. Estimated bearing capacity 150 kN/m².", terrainAnalysis: "Flat terrain with good drainage.", safetyConcerns: ["Uneven ground could cause tripping."] },
+        foundationEngineering: { recommendedType: "Isolated Column Footing", depth: "1.5 meters", width: "1.2 x 1.2 meters", reinforcement: "12mm bars at 150mm c/c both ways", formulasUsed: ["Bearing Capacity Formula"] },
+        wiringAndElectrical: { layoutStrategy: "Main distribution board at entrance.", safetyProtocols: "Earth pit min 3m deep; 30mA RCBOs.", estimatedPoints: "15 light, 8 fan, 20 power sockets." },
+        concreteMixDesign: { targetGrade: "M20", ratio: "1:1.5:3", mixingInstructions: "Mix dry, add water slowly. Use within 45 min.", curingProcess: "Keep moist 10-14 days." },
+        materialEstimateSummary: { cementBags: Math.ceil(specs.area * specs.floors * 0.4), sandCft: Math.ceil(specs.area * specs.floors * 1.8), aggregateCft: Math.ceil(specs.area * specs.floors * 1.3), steelTons: Number((specs.area * specs.floors * 0.0035).toFixed(2)), bricksBlocks: Math.ceil(specs.area * specs.floors * 8), currentMarketRateNotes: "Fallback estimates." },
+        stepByStepGuide: [{ phase: "Excavation", steps: ["Mark layout", "Excavate to 1.5m", "Pour PCC bed"], safetyWarning: "Keep machinery from trench edges." }],
+        safetyWarnings: ["Always wear hardhats", "Secure scaffolding before use"],
         blueprintDescription: `A ${specs.floors}-story ${buildingType} structure.`,
         formulasAndCalculations: ["Area = L × W", "Concrete Vol = Area × Thickness"]
       };
@@ -365,16 +323,14 @@ IMPORTANT:
   const response = await result.response;
   let text;
   try { text = response.text(); } catch (e) { throw new Error('AI returned an empty response.'); }
-
   return parseAIResponse(text);
 }
 
 /**
- * Generate an AI blueprint/visualization image
+ * Generate AI blueprint image — per-request client
  */
-export async function generateBlueprintImage(specs, analysis) {
-  if (!genAI) throw new Error('Gemini not initialized.');
-
+export async function generateBlueprintImage(apiKey, specs, analysis) {
+  const genAI = createClient(apiKey);
   const foundationType = analysis.foundationRecommendation?.type || 'strip foundation';
   const wallDesc = specs.wallType === 'concrete_block' ? 'concrete block' : specs.wallType;
   const description = specs.description || 'residential building';
@@ -387,18 +343,13 @@ export async function generateBlueprintImage(specs, analysis) {
       contents: [{ role: 'user', parts: [{ text: prompt }] }],
       generationConfig: { responseModalities: ['TEXT', 'IMAGE'] },
     });
-
     const response = await result.response;
     const parts = response.candidates?.[0]?.content?.parts || [];
     for (const part of parts) {
       if (part.inlineData) {
-        return {
-          imageData: `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`,
-          mimeType: part.inlineData.mimeType,
-        };
+        return { imageData: `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`, mimeType: part.inlineData.mimeType };
       }
     }
-    console.warn('No image generated by AI');
     return null;
   } catch (error) {
     console.error('Image generation failed:', error.message);
@@ -407,10 +358,10 @@ export async function generateBlueprintImage(specs, analysis) {
 }
 
 /**
- * Handle user feedback and refine the blueprint
+ * Refine blueprint — per-request client
  */
-export async function refineBlueprint(currentAnalysis, feedback, specs) {
-  if (!genAI) throw new Error('Gemini not initialized.');
+export async function refineBlueprint(apiKey, currentAnalysis, feedback, specs) {
+  const genAI = createClient(apiKey);
 
   const prompt = `You are an expert Structural Engineer. The user has reviewed your previous construction blueprint and has some requested changes or questions.
 
@@ -421,17 +372,14 @@ export async function refineBlueprint(currentAnalysis, feedback, specs) {
 - Wall: ${specs.wallType} (Thickness: ${specs.wallThickness}mm)
 
 **Your Task:**
-Update the previous blueprint JSON to incorporate these changes. If the user asks for a change that is UNSAFE or against engineering rules, explain why in the "safetyWarnings" but still provide the best engineered alternative.
+Update the previous blueprint JSON to incorporate these changes. If the user asks for a change that is UNSAFE, explain why in "safetyWarnings" but provide the best alternative.
 
 Return the FULL updated JSON object with the same structure as before.`;
 
-  const result = await callWithFallback(async (model) => {
+  const result = await callWithFallback(genAI, async (model) => {
     const res = await model.generateContent({
       contents: [{ role: 'user', parts: [{ text: prompt }, { text: JSON.stringify(currentAnalysis) }] }],
-      generationConfig: {
-        responseMimeType: 'application/json',
-        maxOutputTokens: 65536,
-      },
+      generationConfig: { responseMimeType: 'application/json', maxOutputTokens: 65536 },
     });
     return res;
   });
@@ -439,6 +387,5 @@ Return the FULL updated JSON object with the same structure as before.`;
   const response = await result.response;
   let text;
   try { text = response.text(); } catch (e) { throw new Error('AI returned an empty response.'); }
-
   return parseAIResponse(text);
 }

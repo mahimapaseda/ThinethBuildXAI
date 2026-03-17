@@ -1,18 +1,27 @@
 /**
- * BuildX AI – Frontend Gemini Service (API Client)
- * All AI calls are proxied through the Express backend for security.
- * The Gemini API key NEVER touches the browser.
+ * BuildX AI – Frontend Gemini Service (BYOK — Bring Your Own Key)
+ * The user's API key is stored in localStorage and sent via x-gemini-api-key header.
+ * All AI processing happens on the backend — the key is only used for transit.
  */
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
+const STORAGE_KEY = 'buildx_gemini_key';
 
 function getToken() {
   return localStorage.getItem('buildx_token');
 }
 
+function getGeminiKey() {
+  return localStorage.getItem(STORAGE_KEY) || '';
+}
+
 function authHeaders() {
   const token = getToken();
-  return token ? { Authorization: `Bearer ${token}` } : {};
+  const geminiKey = getGeminiKey();
+  const headers = {};
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  if (geminiKey) headers['x-gemini-api-key'] = geminiKey;
+  return headers;
 }
 
 /**
@@ -21,55 +30,64 @@ function authHeaders() {
 function fileToBase64(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onload = () => {
-      const base64 = reader.result.split(',')[1];
-      resolve(base64);
-    };
+    reader.onload = () => resolve(reader.result.split(',')[1]);
     reader.onerror = reject;
     reader.readAsDataURL(file);
   });
 }
 
 /**
- * Initialize Gemini by sending the API key to the backend.
- * The key is stored server-side only — never in localStorage.
+ * Save the API key to localStorage.
+ * Called by ApiKeyModal when user enters their key.
  */
-export async function initializeGemini(apiKey) {
-  const res = await fetch(`${API_BASE}/ai/set-key`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...authHeaders() },
-    body: JSON.stringify({ apiKey }),
-  });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || 'Failed to set API key.');
-  console.log('✅ Gemini initialized on server.');
+export function initializeGemini(apiKey) {
+  localStorage.setItem(STORAGE_KEY, apiKey.trim());
+  console.log('✅ Gemini API key saved to localStorage.');
 }
 
 /**
- * Validate API key by sending it to the backend
+ * Check if a key is stored
+ */
+export function isGeminiReady() {
+  return getGeminiKey().length > 0;
+}
+
+/**
+ * Get the stored key (for display purposes, e.g. masked in settings)
+ */
+export function getStoredGeminiKey() {
+  return getGeminiKey();
+}
+
+/**
+ * Clear the stored key
+ */
+export function clearGeminiKey() {
+  localStorage.removeItem(STORAGE_KEY);
+}
+
+/**
+ * Validate API key format locally (no server call needed)
  */
 export async function validateApiKey(apiKey) {
   try {
-    const res = await fetch(`${API_BASE}/ai/set-key`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...authHeaders() },
-      body: JSON.stringify({ apiKey }),
-    });
-    const data = await res.json();
-    if (res.ok) {
-      return { valid: true, model: data.model || 'gemini-2.5-flash' };
+    const cleanKey = (apiKey || '').trim().replace(/[^\x20-\x7E]/g, '');
+    if (!cleanKey || cleanKey.length < 10) {
+      return { valid: false, error: 'API key is too short or contains invalid characters.' };
     }
-    return { valid: false, error: data.error || 'Invalid API key.' };
+    if (!cleanKey.startsWith('AIza') || cleanKey.length < 30) {
+      return { valid: false, error: 'This doesn\'t look like a valid Google API key. Keys start with "AIza" and are about 39 characters long.' };
+    }
+    return { valid: true, model: 'gemini-2.5-flash' };
   } catch (error) {
-    return { valid: false, error: 'Could not connect to server to validate key.', rawError: error.message };
+    return { valid: false, error: 'Something went wrong while checking your key.', rawError: error.message };
   }
 }
 
 /**
- * Analyze construction site photos — sends base64 photos to backend
+ * Analyze construction site photos — sends base64 photos + key header to backend
  */
 export async function analyzeSite(imageFiles, specs, siteLocation = null) {
-  // Convert File objects to base64 for transport
   const photos = await Promise.all(
     Object.entries(imageFiles).map(async ([side, file]) => {
       const base64 = await fileToBase64(file);
@@ -124,9 +142,8 @@ export async function refineBlueprint(currentAnalysis, feedback, specs) {
 }
 
 /**
- * Validate user specs — local checks only, no API call needed
+ * Validate user specs — local checks only
  */
 export async function validateSpecs(specs, photos) {
-  console.log('ℹ️ Spec validation using local checks only.');
   return [];
 }

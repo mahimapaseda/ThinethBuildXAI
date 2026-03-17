@@ -12,8 +12,7 @@ import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import fs from 'fs';
 import {
-    initializeGemini, validateApiKey, isInitialized,
-    analyzeSite, refineBlueprint, generateBlueprintImage
+    validateApiKey, analyzeSite, refineBlueprint, generateBlueprintImage
 } from './geminiService.js';
 
 import {
@@ -347,58 +346,66 @@ app.delete('/api/admin/projects/:id', authMiddleware, adminMiddleware, (req, res
     }
 });
 
-// ─── AI Routes (Gemini runs server-side) ──────────────────────────────────────
-app.post('/api/ai/set-key', authMiddleware, (req, res) => {
-    try {
-        const { apiKey } = req.body;
-        if (!apiKey) return res.status(400).json({ error: 'API key is required.' });
+// ─── AI Routes (BYOK — user sends their key via x-gemini-api-key header) ─────
 
-        const validation = validateApiKey(apiKey);
-        if (!validation.valid) return res.status(400).json({ error: validation.error });
-
-        initializeGemini(apiKey);
-        res.json({ success: true, model: validation.model });
-    } catch (err) {
-        console.error('Set API key error:', err);
-        res.status(500).json({ error: err.message || 'Failed to set API key.' });
+/**
+ * Middleware to extract and validate the Gemini API key from request headers.
+ * Attaches req.geminiApiKey on success, returns 401 on failure.
+ */
+function geminiKeyMiddleware(req, res, next) {
+    const apiKey = req.headers['x-gemini-api-key'];
+    if (!apiKey) {
+        return res.status(401).json({ error: 'Gemini API key is required. Please set your API key in Settings.', code: 'MISSING_API_KEY' });
     }
+    const validation = validateApiKey(apiKey);
+    if (!validation.valid) {
+        return res.status(401).json({ error: validation.error, code: 'INVALID_API_KEY' });
+    }
+    req.geminiApiKey = apiKey;
+    next();
+}
+
+app.post('/api/ai/validate-key', authMiddleware, (req, res) => {
+    const apiKey = req.headers['x-gemini-api-key'] || req.body.apiKey;
+    if (!apiKey) return res.status(400).json({ valid: false, error: 'No API key provided.' });
+    const validation = validateApiKey(apiKey);
+    res.json(validation);
 });
 
-app.post('/api/ai/analyze', authMiddleware, async (req, res) => {
+app.post('/api/ai/analyze', authMiddleware, geminiKeyMiddleware, async (req, res) => {
     try {
-        if (!isInitialized()) return res.status(400).json({ error: 'AI not initialized. Please set your API key first.' });
         const { photos, specs, siteLocation } = req.body;
         if (!photos || !specs) return res.status(400).json({ error: 'Photos and specs are required.' });
 
-        const result = await analyzeSite(photos, specs, siteLocation);
+        const result = await analyzeSite(req.geminiApiKey, photos, specs, siteLocation);
         res.json({ analysis: result });
     } catch (err) {
         console.error('AI analysis error:', err);
-        res.status(500).json({ error: err.message || 'AI analysis failed.' });
+        const status = err.message.includes('invalid') || err.message.includes('expired') ? 401 : 500;
+        res.status(status).json({ error: err.message || 'AI analysis failed.' });
     }
 });
 
-app.post('/api/ai/refine', authMiddleware, async (req, res) => {
+app.post('/api/ai/refine', authMiddleware, geminiKeyMiddleware, async (req, res) => {
     try {
-        if (!isInitialized()) return res.status(400).json({ error: 'AI not initialized.' });
         const { currentAnalysis, feedback, specs } = req.body;
         if (!currentAnalysis || !feedback || !specs) return res.status(400).json({ error: 'Analysis, feedback, and specs are required.' });
 
-        const result = await refineBlueprint(currentAnalysis, feedback, specs);
+        const result = await refineBlueprint(req.geminiApiKey, currentAnalysis, feedback, specs);
         res.json({ analysis: result });
     } catch (err) {
         console.error('AI refinement error:', err);
-        res.status(500).json({ error: err.message || 'AI refinement failed.' });
+        const status = err.message.includes('invalid') || err.message.includes('expired') ? 401 : 500;
+        res.status(status).json({ error: err.message || 'AI refinement failed.' });
     }
 });
 
-app.post('/api/ai/generate-image', authMiddleware, async (req, res) => {
+app.post('/api/ai/generate-image', authMiddleware, geminiKeyMiddleware, async (req, res) => {
     try {
-        if (!isInitialized()) return res.status(400).json({ error: 'AI not initialized.' });
         const { specs, analysis } = req.body;
         if (!specs || !analysis) return res.status(400).json({ error: 'Specs and analysis are required.' });
 
-        const result = await generateBlueprintImage(specs, analysis);
+        const result = await generateBlueprintImage(req.geminiApiKey, specs, analysis);
         res.json({ image: result });
     } catch (err) {
         console.error('AI image generation error:', err);
@@ -419,16 +426,6 @@ if (fs.existsSync(distPath)) {
         }
     });
     console.log('📦 Serving production frontend from dist/');
-}
-
-// ─── Auto-init Gemini from env var ────────────────────────────────────────────
-if (process.env.GEMINI_API_KEY) {
-    try {
-        initializeGemini(process.env.GEMINI_API_KEY);
-        console.log('🔑 Gemini initialized from GEMINI_API_KEY environment variable.');
-    } catch (e) {
-        console.warn('⚠️ GEMINI_API_KEY env var present but invalid:', e.message);
-    }
 }
 
 // ─── Start Server ─────────────────────────────────────────────────────────────
