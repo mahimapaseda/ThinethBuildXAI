@@ -11,6 +11,10 @@ import multer from 'multer';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import fs from 'fs';
+import {
+    initializeGemini, validateApiKey, isInitialized,
+    analyzeSite, refineBlueprint, generateBlueprintImage
+} from './geminiService.js';
 
 import {
     createUser, getUserByEmail, getUserById, getAllUsers, updateUser, deleteUser,
@@ -27,8 +31,8 @@ const JWT_SECRET = process.env.JWT_SECRET || 'buildx-ai-secret-key-2026';
 
 // ─── Middleware ────────────────────────────────────────────────────────────────
 app.use(cors());
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+app.use(express.json({ limit: '100mb' }));
+app.use(express.urlencoded({ extended: true, limit: '100mb' }));
 
 // Serve uploaded photos
 const uploadsDir = join(__dirname, 'uploads');
@@ -342,6 +346,90 @@ app.delete('/api/admin/projects/:id', authMiddleware, adminMiddleware, (req, res
         res.status(500).json({ error: 'Failed to delete project.' });
     }
 });
+
+// ─── AI Routes (Gemini runs server-side) ──────────────────────────────────────
+app.post('/api/ai/set-key', authMiddleware, (req, res) => {
+    try {
+        const { apiKey } = req.body;
+        if (!apiKey) return res.status(400).json({ error: 'API key is required.' });
+
+        const validation = validateApiKey(apiKey);
+        if (!validation.valid) return res.status(400).json({ error: validation.error });
+
+        initializeGemini(apiKey);
+        res.json({ success: true, model: validation.model });
+    } catch (err) {
+        console.error('Set API key error:', err);
+        res.status(500).json({ error: err.message || 'Failed to set API key.' });
+    }
+});
+
+app.post('/api/ai/analyze', authMiddleware, async (req, res) => {
+    try {
+        if (!isInitialized()) return res.status(400).json({ error: 'AI not initialized. Please set your API key first.' });
+        const { photos, specs, siteLocation } = req.body;
+        if (!photos || !specs) return res.status(400).json({ error: 'Photos and specs are required.' });
+
+        const result = await analyzeSite(photos, specs, siteLocation);
+        res.json({ analysis: result });
+    } catch (err) {
+        console.error('AI analysis error:', err);
+        res.status(500).json({ error: err.message || 'AI analysis failed.' });
+    }
+});
+
+app.post('/api/ai/refine', authMiddleware, async (req, res) => {
+    try {
+        if (!isInitialized()) return res.status(400).json({ error: 'AI not initialized.' });
+        const { currentAnalysis, feedback, specs } = req.body;
+        if (!currentAnalysis || !feedback || !specs) return res.status(400).json({ error: 'Analysis, feedback, and specs are required.' });
+
+        const result = await refineBlueprint(currentAnalysis, feedback, specs);
+        res.json({ analysis: result });
+    } catch (err) {
+        console.error('AI refinement error:', err);
+        res.status(500).json({ error: err.message || 'AI refinement failed.' });
+    }
+});
+
+app.post('/api/ai/generate-image', authMiddleware, async (req, res) => {
+    try {
+        if (!isInitialized()) return res.status(400).json({ error: 'AI not initialized.' });
+        const { specs, analysis } = req.body;
+        if (!specs || !analysis) return res.status(400).json({ error: 'Specs and analysis are required.' });
+
+        const result = await generateBlueprintImage(specs, analysis);
+        res.json({ image: result });
+    } catch (err) {
+        console.error('AI image generation error:', err);
+        res.status(500).json({ error: err.message || 'Image generation failed.' });
+    }
+});
+
+// ─── Serve Frontend in Production ─────────────────────────────────────────────
+const distPath = join(__dirname, '..', 'dist');
+if (fs.existsSync(distPath)) {
+    app.use(express.static(distPath));
+    // SPA fallback — serve index.html for any non-API route (Express 5 compatible)
+    app.use((req, res, next) => {
+        if (req.method === 'GET' && !req.path.startsWith('/api') && !req.path.startsWith('/uploads')) {
+            res.sendFile(join(distPath, 'index.html'));
+        } else {
+            next();
+        }
+    });
+    console.log('📦 Serving production frontend from dist/');
+}
+
+// ─── Auto-init Gemini from env var ────────────────────────────────────────────
+if (process.env.GEMINI_API_KEY) {
+    try {
+        initializeGemini(process.env.GEMINI_API_KEY);
+        console.log('🔑 Gemini initialized from GEMINI_API_KEY environment variable.');
+    } catch (e) {
+        console.warn('⚠️ GEMINI_API_KEY env var present but invalid:', e.message);
+    }
+}
 
 // ─── Start Server ─────────────────────────────────────────────────────────────
 app.listen(PORT, () => {
