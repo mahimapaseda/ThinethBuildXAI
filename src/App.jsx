@@ -8,27 +8,21 @@ import BlueprintView from './components/BlueprintView';
 import SpecValidator from './components/SpecValidator';
 import { initializeGemini, analyzeSite, generateBlueprintImage, refineBlueprint, validateSpecs as aiValidateSpecs } from './services/gemini';
 import { convertUnits, generateFullEstimate } from './services/calculator';
-import Auth from './components/Auth';
-import AdminDashboard from './components/AdminDashboard';
 import MapSelector from './components/MapSelector';
-import { getStoredUser, getStoredToken, getMe, logout as apiLogout, saveProject } from './services/api';
 
 
 const PHASES = {
   WELCOME: 'welcome',
-  AUTH: 'auth',
   MAP_SELECT: 'map_select',
   UPLOAD: 'upload',
   SPECS: 'specs',
   VALIDATING: 'validating',
   ANALYZING: 'analyzing',
   RESULTS: 'results',
-  ADMIN: 'admin',
 };
 
 export default function App() {
   const [phase, setPhase] = useState(PHASES.WELCOME);
-  const [user, setUser] = useState(null);
   const [apiKey, setApiKey] = useState(null);
   const [showApiModal, setShowApiModal] = useState(false);
   const [photos, setPhotos] = useState({});
@@ -40,27 +34,8 @@ export default function App() {
   const [blueprintImage, setBlueprintImage] = useState(null);
   const [siteLocation, setSiteLocation] = useState(null);
 
-  // Check for stored user and API key on mount
+  // Load stored API key on mount
   useEffect(() => {
-    // In production (Vercel), auto-set a guest user to bypass auth
-    const isProduction = import.meta.env.PROD;
-    if (isProduction && !user) {
-      setUser({ id: 'guest', name: 'Guest User', email: 'guest@buildx.ai' });
-    } else {
-      const storedUser = getStoredUser();
-      const storedToken = getStoredToken();
-      if (storedUser && storedToken) {
-        getMe()
-          .then(data => {
-            setUser(data.user);
-          })
-          .catch(() => {
-            apiLogout();
-            setUser(null);
-          });
-      }
-    }
-
     const storedKey = localStorage.getItem('buildx_api_key');
     if (storedKey) {
       setApiKey(storedKey);
@@ -76,31 +51,11 @@ export default function App() {
     setPhase(PHASES.MAP_SELECT);
   };
 
-  const handleLogin = (userData) => {
-    setUser(userData);
+  const handleGetStarted = () => {
     if (apiKey) {
       setPhase(PHASES.MAP_SELECT);
     } else {
       setShowApiModal(true);
-    }
-  };
-
-  const handleLogout = () => {
-    apiLogout();
-    setUser(null);
-    setPhase(PHASES.WELCOME);
-  };
-
-  const handleGetStarted = () => {
-    // In production, user is always set (guest). Skip auth entirely.
-    if (user) {
-      if (apiKey) {
-        setPhase(PHASES.MAP_SELECT);
-      } else {
-        setShowApiModal(true);
-      }
-    } else {
-      setPhase(PHASES.AUTH);
     }
   };
 
@@ -113,13 +68,11 @@ export default function App() {
     setPhotos(updatedPhotos);
   };
 
-  // After specs form submission → go to validation first
   const handleSpecsSubmit = (userSpecs) => {
     setSpecs(userSpecs);
     setPhase(PHASES.VALIDATING);
   };
 
-  // After validation passes → run the actual analysis
   const handleValidationProceed = async (validatedSpecs) => {
     const userSpecs = validatedSpecs || specs;
     setSpecs(userSpecs);
@@ -127,7 +80,6 @@ export default function App() {
     setError(null);
 
     try {
-      // Convert to meters for calculations
       const lengthM = userSpecs.unit === 'ft'
         ? convertUnits(userSpecs.length, 'ft', 'm')
         : userSpecs.length;
@@ -135,15 +87,11 @@ export default function App() {
         ? convertUnits(userSpecs.width, 'ft', 'm')
         : userSpecs.width;
 
-      // Run AI analysis and engineering calculations in parallel
       const [aiAnalysis, engEstimate] = await Promise.all([
         analyzeSite(photos, userSpecs, siteLocation),
-        Promise.resolve(generateFullEstimate(lengthM, widthM, userSpecs.floors, userSpecs.wallType,
-          'M20' // default; will be updated by AI recommendation
-        )),
+        Promise.resolve(generateFullEstimate(lengthM, widthM, userSpecs.floors, userSpecs.wallType, 'M20')),
       ]);
 
-      // If AI recommends a different concrete grade, recalculate
       let finalEstimate = engEstimate;
       const recommendedGrade = aiAnalysis.concreteMixDesign?.targetGrade;
       if (recommendedGrade && recommendedGrade !== 'M20' && ['M15', 'M20', 'M25', 'M30'].includes(recommendedGrade)) {
@@ -154,22 +102,7 @@ export default function App() {
       setEstimate(finalEstimate);
       setPhase(PHASES.RESULTS);
 
-      // Save project to backend
-      try {
-        await saveProject({
-          projectName: userSpecs.description
-            ? userSpecs.description.substring(0, 40) + (userSpecs.description.length > 40 ? '...' : '')
-            : 'Untitled Project',
-          specs: userSpecs,
-          aiAnalysis,
-          estimate: finalEstimate,
-          photosMeta: Object.keys(photos).map(side => ({ side, fileName: photos[side]?.name || side })),
-        });
-      } catch (saveErr) {
-        console.warn('Could not save project to server:', saveErr.message);
-      }
-
-      // Generate AI image in background (non-blocking)
+      // Generate AI image in background
       setBlueprintImage(null);
       generateBlueprintImage(userSpecs, aiAnalysis)
         .then(img => { if (img) setBlueprintImage(img); })
@@ -225,17 +158,12 @@ export default function App() {
     <>
       <Header
         apiKey={apiKey}
-        user={user}
         onResetKey={() => {
           localStorage.removeItem('buildx_api_key');
           setApiKey(null);
           setPhase(PHASES.WELCOME);
         }}
-        onLogout={handleLogout}
-        onAdminPanel={() => setPhase(PHASES.ADMIN)}
-        onLoginClick={() => setPhase(PHASES.AUTH)}
       />
-
 
       {showApiModal && (
         <ApiKeyModal onKeySet={handleApiKeySet} />
@@ -282,10 +210,6 @@ export default function App() {
         </div>
       )}
 
-      {phase === PHASES.AUTH && (
-        <Auth onLogin={handleLogin} />
-      )}
-
       {phase === PHASES.MAP_SELECT && (
         <MapSelector
           onLocationConfirm={handleLocationConfirm}
@@ -295,7 +219,6 @@ export default function App() {
 
       {(phase === PHASES.UPLOAD || phase === PHASES.SPECS) && (
         <div className="wizard-container">
-          {/* Step Indicator */}
           <div className="wizard-header">
             <div className="wizard-step-indicator">
               <div className={`step-dot ${getCurrentStepNum() >= 1 ? 'active' : ''} ${getCurrentStepNum() > 1 ? 'completed' : ''}`}>1</div>
@@ -383,10 +306,6 @@ export default function App() {
           onNewProject={handleNewProject}
           onRefine={handleRefine}
         />
-      )}
-
-      {phase === PHASES.ADMIN && (
-        <AdminDashboard onBack={() => setPhase(PHASES.WELCOME)} />
       )}
     </>
   );
