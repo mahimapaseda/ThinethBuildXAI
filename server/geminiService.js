@@ -307,20 +307,7 @@ IMPORTANT:
       return res;
     });
   } catch (apiError) {
-    if (apiError.message.includes('quota is fully used up') || apiError.message.includes('rate-limited')) {
-      console.warn('API FALLBACK: Returning mock data due to quota limits.');
-      return {
-        siteAssessment: { soilNature: "Simulated Sand/Clay soil. Estimated bearing capacity 150 kN/m².", terrainAnalysis: "Flat terrain with good drainage.", safetyConcerns: ["Uneven ground could cause tripping."] },
-        foundationEngineering: { recommendedType: "Isolated Column Footing", depth: "1.5 meters", width: "1.2 x 1.2 meters", reinforcement: "12mm bars at 150mm c/c both ways", formulasUsed: ["Bearing Capacity Formula"] },
-        wiringAndElectrical: { layoutStrategy: "Main distribution board at entrance.", safetyProtocols: "Earth pit min 3m deep; 30mA RCBOs.", estimatedPoints: "15 light, 8 fan, 20 power sockets." },
-        concreteMixDesign: { targetGrade: "M20", ratio: "1:1.5:3", mixingInstructions: "Mix dry, add water slowly. Use within 45 min.", curingProcess: "Keep moist 10-14 days." },
-        materialEstimateSummary: { cementBags: Math.ceil(specs.area * specs.floors * 0.4), sandCft: Math.ceil(specs.area * specs.floors * 1.8), aggregateCft: Math.ceil(specs.area * specs.floors * 1.3), steelTons: Number((specs.area * specs.floors * 0.0035).toFixed(2)), bricksBlocks: Math.ceil(specs.area * specs.floors * 8), currentMarketRateNotes: "Fallback estimates." },
-        stepByStepGuide: [{ phase: "Excavation", steps: ["Mark layout", "Excavate to 1.5m", "Pour PCC bed"], safetyWarning: "Keep machinery from trench edges." }],
-        safetyWarnings: ["Always wear hardhats", "Secure scaffolding before use"],
-        blueprintDescription: `A ${specs.floors}-story ${buildingType} structure.`,
-        formulasAndCalculations: ["Area = L × W", "Concrete Vol = Area × Thickness"]
-      };
-    }
+    console.error("API Call Failed:", apiError);
     throw apiError;
   }
 

@@ -252,12 +252,9 @@ Use this location to determine:
 
   const prompt = `Act as an expert Senior Structural Engineer. You MUST generate the report EXACTLY following the detailed Markdown structure below. DO NOT summarize. Write extremely detailed, long paragraphs. Calculate ALL costs strictly in Sri Lankan Rupees (LKR/Rs).
 You MUST include exactly 10 Safety Warnings.
-You MUST generate a highly detailed line-by-line mathematical breakdown from F1 to F36 explicitly calculating dimensions, volumes, materials, and geotechnical forces.
-
-Model Requirements: Use gemini-1.5-flash with maxOutputTokens set to 65536 or higher.
+You MUST generate a highly detailed line-by-line mathematical breakdown from F1 to F36 explicitly calculating dimensions, volumes, materials, and geotechnical forces. Use gemini-1.5-flash with maxOutputTokens: 65536.
 
 Analyze the provided construction site photos (Front, Sides, and Ground close-up) and user specifications to generate an EXTREMELY DETAILED, EXHAUSTIVE engineering report.
-${locationContext}${buildingTypeContext}
 **Building Specifications:**
 - Building Type: ${buildingType.replace(/_/g, ' ')}
 - Building Area: ${specs.area} ${specs.unit}²
@@ -268,100 +265,30 @@ ${locationContext}${buildingTypeContext}
 - Wall Material: ${specs.wallType}
 - User Vision: "${specs.description}"
 
-═══════════════════════════════════════════════════════════════
-██  CRITICAL OUTPUT RULES — YOU MUST FOLLOW THESE EXACTLY  ██
-═══════════════════════════════════════════════════════════════
-
-1. **DO NOT SUMMARIZE.** Every single section must contain LONG, DETAILED PARAGRAPHS (minimum 5-8 sentences each). Write as if you are producing a university-level civil engineering textbook chapter. Never use short one-line answers.
-
-2. **SAFETY WARNINGS — EXACTLY 10 REQUIRED.** The "safetyWarnings" array MUST contain EXACTLY 10 detailed safety warnings. Each warning MUST be a full paragraph (4-6 sentences minimum) explaining the hazard, the physics/engineering reason behind it, and the exact mitigation measures with specific equipment names and standards.
-
-3. **FORMULA BREAKDOWN F1 TO F36 — ALL 36 REQUIRED.** The "formulasAndCalculations" array MUST contain EXACTLY 36 entries labeled F1 through F36. Each entry must show:
-   - The formula name and number (e.g., "F1: Total Built-Up Area")
-   - The symbolic formula (e.g., "A = L × W × N")
-   - Substitution of actual values from the specs
-   - Step-by-step arithmetic to the final numerical answer with units
-   - A 2-3 sentence explanation of what this value means in practical construction terms
-
-   The 36 formulas MUST cover (in this exact order):
-   F1: Total Built-Up Area
-   F2: Plinth Area
-   F3: Carpet Area (deducting wall thickness)
-   F4: Total Building Volume
-   F5: Dead Load per Floor (self-weight of slab)
-   F6: Live Load per Floor (IS 875 Part 2)
-   F7: Total Vertical Load on Foundation
-   F8: Wind Load Calculation (IS 875 Part 3)
-   F9: Soil Bearing Capacity Assessment
-   F10: Required Foundation Area (Total Load / Bearing Capacity)
-   F11: Foundation Depth (Rankine's Formula)
-   F12: Footing Size Calculation
-   F13: Bending Moment in Footing (M = wL²/8)
-   F14: Effective Depth of Footing (d = √(M / 0.138 × fck × b))
-   F15: Area of Steel in Footing (Ast = M / (0.87 × fy × d × (1 - Ast×fy/(b×d×fck))))
-   F16: Slab Thickness Design
-   F17: Slab Reinforcement (Main Steel)
-   F18: Slab Reinforcement (Distribution Steel)
-   F19: Beam Design — Bending Moment
-   F20: Beam — Required Depth
-   F21: Beam — Tension Reinforcement Area
-   F22: Beam — Shear Force Calculation
-   F23: Beam — Shear Reinforcement (Stirrup Spacing)
-   F24: Column Axial Load Calculation
-   F25: Column Cross-Section Design (Pu = 0.4×fck×Ac + 0.67×fy×Asc)
-   F26: Column Reinforcement Percentage
-   F27: Concrete Volume — Foundation
-   F28: Concrete Volume — Columns
-   F29: Concrete Volume — Beams
-   F30: Concrete Volume — Slabs
-   F31: Total Concrete Volume
-   F32: Cement Quantity (from mix ratio)
-   F33: Sand Quantity (from mix ratio)
-   F34: Aggregate Quantity (from mix ratio)
-   F35: Steel Weight Estimation (total kg of reinforcement)
-   F36: Brick/Block Count for Walls
-
-4. **stepByStepGuide** must have at least 8 phases, each with 5-10 detailed task steps and a paragraph-length safety warning.
-
-5. **siteAssessment.soilNature** must be at least 2 full paragraphs analyzing soil type, classification (IS 1498), bearing capacity calculation method, moisture behavior, and seasonal variation.
-
-6. **foundationEngineering** fields must each be multi-sentence detailed paragraphs with exact numbers, engineering justifications, and code references (IS 456, IS 1904, IS 2950).
-
-7. **concreteMixDesign** must include full IS 10262 mix design procedure with target mean strength, water-cement ratio justification, and quantities per cubic meter.
-
-8. **materialEstimateSummary** must include realistic quantities calculated from the actual dimensions and formulas above.
-
-9. **blueprintDescription** must be at least 300 words describing the building in extreme architectural detail.
-
-10. **wiringAndElectrical** must include detailed conduit routing, circuit design, distribution board specification, and Indian Electricity Rules compliance.
-
-═══════════════════════════════════════════════════════════════
-
 Return your response as a valid JSON object with the following structure:
-
 {
   "siteAssessment": {
-    "soilNature": "MINIMUM 2 FULL PARAGRAPHS analyzing soil type, IS 1498 classification, bearing capacity, moisture, and seasonal effects",
-    "terrainAnalysis": "MINIMUM 2 FULL PARAGRAPHS on terrain slope, drainage, accessibility, flood risk, and grading requirements",
-    "safetyConcerns": ["Exactly 5 detailed site-specific hazards with full paragraph descriptions each"]
+    "soilNature": "Detailed description of soil type, bearing capacity estimate, and moisture content observations",
+    "terrainAnalysis": "Terrain slope, drainage efficiency, and site accessibility",
+    "safetyConcerns": ["List of site-specific safety hazards identified"]
   },
   "foundationEngineering": {
-    "recommendedType": "Full paragraph: type + engineering justification + code reference",
-    "depth": "Full paragraph: exact depth + Rankine's formula application + soil factor explanation",
-    "width": "Full paragraph: exact dimensions + load distribution calculation",
-    "reinforcement": "Full paragraph: bar diameter, spacing, cover, lap length, with IS 456 clause references",
-    "formulasUsed": ["List of all foundation formulas with clause numbers"]
+    "recommendedType": "Foundation Type",
+    "depth": "Exact depth in meters",
+    "width": "Exact width in meters",
+    "reinforcement": "Steel bar sizing and spacing",
+    "formulasUsed": ["Foundation formulas used"]
   },
   "wiringAndElectrical": {
-    "layoutStrategy": "MINIMUM 2 PARAGRAPHS: room-by-room conduit routing, DB location, circuit grouping, wire gauge selection",
-    "safetyProtocols": "MINIMUM 1 PARAGRAPH: earthing pit design, RCCB/MCB specs, IP ratings, Indian Electricity Rules",
-    "estimatedPoints": "Detailed room-by-room breakdown of light, fan, socket, and power points with total count"
+    "layoutStrategy": "Conduit routing and distribution board location",
+    "safetyProtocols": "Earthing and circuit protection",
+    "estimatedPoints": "Estimate of light, fan, and power points"
   },
   "concreteMixDesign": {
-    "targetGrade": "Grade with IS 10262 target mean strength calculation",
-    "ratio": "Full mix design: ratio, w/c ratio, quantities per m³ (cement kg, sand kg, aggregate kg, water liters)",
-    "mixingInstructions": "MINIMUM 2 PARAGRAPHS: step-by-step hand mixing AND machine mixing procedures for beginners",
-    "curingProcess": "MINIMUM 1 PARAGRAPH: day-by-day curing schedule with methods and strength gain percentages"
+    "targetGrade": "Concrete Grade",
+    "ratio": "Cement:Sand:Aggregate ratio",
+    "mixingInstructions": "Detailed mixing procedure",
+    "curingProcess": "Days and method for curing"
   },
   "materialEstimateSummary": {
     "cementBags": 0,
@@ -369,31 +296,19 @@ Return your response as a valid JSON object with the following structure:
     "aggregateCft": 0,
     "steelTons": 0,
     "bricksBlocks": 0,
-    "currentMarketRateNotes": "MINIMUM 1 PARAGRAPH: itemized cost estimation with approximate Sri Lankan Rupee (LKR) rates per unit"
+    "currentMarketRateNotes": "Estimation of total cost strictly in LKR"
   },
   "stepByStepGuide": [
-    {
-      "phase": "Phase name",
-      "steps": ["5-10 detailed task descriptions per phase"],
-      "safetyWarning": "FULL PARAGRAPH safety warning specific to this phase"
-    }
+    { "phase": "Phase name", "steps": ["Task 1"], "safetyWarning": "Phase-specific warning" }
   ],
   "safetyWarnings": [
-    "EXACTLY 10 DETAILED SAFETY WARNINGS — each must be a FULL PARAGRAPH of 4-6 sentences covering: the hazard, why it is dangerous (physics/engineering), specific PPE required, emergency procedure, and relevant safety standard reference"
+    "10 exact safety warnings"
   ],
-  "blueprintDescription": "MINIMUM 300 WORDS: Extremely detailed architectural description covering facade, structural system, floor plan layout, room arrangement, door/window positions, roof type, and aesthetic details.",
+  "blueprintDescription": "Extremely detailed architectural description.",
   "formulasAndCalculations": [
-    "EXACTLY 36 FORMULAS labeled F1 through F36. Each MUST include: formula name, symbolic equation, value substitution, step-by-step arithmetic, final answer with units, and 2-3 sentence practical explanation. Follow the exact order specified above."
+    "F1:", "F2:"
   ]
-}
-
-FINAL REMINDER: 
-- You MUST NOT summarize ANY section. Every field must be exhaustively detailed.
-- You MUST produce EXACTLY 10 safety warnings (not 2, not 5 — exactly 10).
-- You MUST produce EXACTLY 36 formulas labeled F1 through F36 with full step-by-step math.
-- This is for a person with ZERO construction knowledge — explain everything as if teaching from scratch.
-- All calculations must use the ACTUAL dimensions provided above.
-- Failure to meet these length and count requirements means your response is REJECTED.`;
+}`;
 
   let result;
   try {
@@ -408,52 +323,8 @@ FINAL REMINDER:
       return res;
     });
   } catch (apiError) {
-    if (apiError.message.includes('quota is fully used up') || apiError.message.includes('rate-limited')) {
-      console.warn('API ERROR FALLBACK: Returning mock data due to quota limits.');
-      // Return a robust mock object if we hit the quota limit.
-      return {
-        siteAssessment: {
-          soilNature: "Simulated Sand/Clay soil mixture. Estimated bearing capacity of 150 kN/m².",
-          terrainAnalysis: "Flat terrain with good natural drainage.",
-          safetyConcerns: ["Uneven ground could cause tripping or material sliding."]
-        },
-        foundationEngineering: {
-          recommendedType: "Isolated Column Footing",
-          depth: "1.5 meters",
-          width: "1.2 x 1.2 meters",
-          reinforcement: "12mm bars at 150mm c/c spacing both ways",
-          formulasUsed: ["Bearing Capacity Formula", "Bending Moment Calculation"]
-        },
-        wiringAndElectrical: {
-          layoutStrategy: "Main distribution board at entrance. Conduit run through ceiling slab before concrete pour.",
-          safetyProtocols: "Proper earth pit installation (min 3m deep); Use 30mA RCBOs.",
-          estimatedPoints: "15 light points, 8 fan points, 20 power sockets."
-        },
-        concreteMixDesign: {
-          targetGrade: "M20",
-          ratio: "1:1.5:3 (Cement:Sand:Aggregate)",
-          mixingInstructions: "Mix dry ingredients first until uniform color. Add water slowly. Use within 45 minutes.",
-          curingProcess: "Keep continually moist for 10-14 days using wet gunny bags."
-        },
-        materialEstimateSummary: {
-          cementBags: Math.ceil(specs.area * specs.floors * 0.4),
-          sandCft: Math.ceil(specs.area * specs.floors * 1.8),
-          aggregateCft: Math.ceil(specs.area * specs.floors * 1.3),
-          steelTons: (specs.area * specs.floors * 0.0035).toFixed(2),
-          bricksBlocks: Math.ceil(specs.area * specs.floors * 8),
-          currentMarketRateNotes: "Approximate fallback estimates. Verify local rates."
-        },
-        stepByStepGuide: [
-          { phase: "Excavation", steps: ["Mark layout", "Excavate to 1.5m", "Pour 100mm PCC bed"], safetyWarning: "Keep heavy machinery back from trench edges." },
-          { phase: "Foundation", steps: ["Place steel mesh", "Erect column cage", "Pour concrete"], safetyWarning: "Ensure proper vibration during pouring." }
-        ],
-        safetyWarnings: ["Always wear hardhats", "Ensure scaffolding is secure before use"],
-        blueprintDescription: `A ${specs.floors}-story ${specs.buildingType} structure with a clear facade.`,
-        formulasAndCalculations: ["Area = Length × Width", "Concrete Vol = Area × Slab Thickness"]
-      };
-    } else {
-      throw apiError; // Re-throw if it's some other problem (like auth or no internet)
-    }
+    console.error("API Call Failed:", apiError);
+    throw apiError;
   }
 
   const response = await result.response;
