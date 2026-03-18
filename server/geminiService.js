@@ -6,7 +6,7 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
 const MODEL_CHAIN = [
-  'gemini-1.5-flash'
+  'gemini-2.5-flash'
 ];
 
 function sanitizeApiKey(key) {
@@ -230,7 +230,7 @@ Use this location to determine:
 You MUST include exactly 10 Safety Warnings.
 You MUST generate a highly detailed line-by-line mathematical breakdown from F1 to F36 explicitly calculating dimensions, volumes, materials, and geotechnical forces.
 
-Model Requirements: Use gemini-1.5-flash with maxOutputTokens set to 65536 or higher.
+Model Requirements: Use gemini-2.5-flash with maxOutputTokens set to 65536 or higher.
 
 Analyze the provided construction site photos (Front, Sides, and Ground close-up) and user specifications to generate a 100% ACCURATE engineering report.
 ${locationContext}${buildingTypeContext}

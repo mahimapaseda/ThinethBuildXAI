@@ -7,9 +7,9 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 
 let genAI = null;
 
-// Models to try in order (fallback chain) — gemini-1.5-flash first for fast, detailed generation
+// Models to try in order (fallback chain) — gemini-2.5-flash first for fast, detailed generation
 const MODEL_CHAIN = [
-  'gemini-1.5-flash'
+  'gemini-2.5-flash'
 ];
 
 /**
@@ -249,7 +249,7 @@ Use this location to determine:
 
   const prompt = `Act as an expert Senior Structural Engineer. You MUST generate the report EXACTLY following the detailed Markdown structure below. DO NOT summarize. Write extremely detailed, long paragraphs. Calculate ALL costs strictly in Sri Lankan Rupees (LKR/Rs).
 You MUST include exactly 10 Safety Warnings.
-You MUST generate a highly detailed line-by-line mathematical breakdown from F1 to F36 explicitly calculating dimensions, volumes, materials, and geotechnical forces. Use gemini-1.5-flash with maxOutputTokens: 65536.
+You MUST generate a highly detailed line-by-line mathematical breakdown from F1 to F36 explicitly calculating dimensions, volumes, materials, and geotechnical forces. Use gemini-2.5-flash with maxOutputTokens: 65536.
 
 Analyze the provided construction site photos (Front, Sides, and Ground close-up) and user specifications to generate an EXTREMELY DETAILED, EXHAUSTIVE engineering report.
 **Building Specifications:**
