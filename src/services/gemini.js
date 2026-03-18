@@ -9,10 +9,7 @@ let genAI = null;
 
 // Models to try in order (fallback chain) — gemini-1.5-flash first for fast, detailed generation
 const MODEL_CHAIN = [
-  'gemini-1.5-flash',
-  'gemini-2.0-flash',
-  'gemini-2.0-flash-lite',
-  'gemini-1.5-pro',
+  'gemini-1.5-flash'
 ];
 
 /**

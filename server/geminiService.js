@@ -6,10 +6,7 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
 const MODEL_CHAIN = [
-  'gemini-1.5-flash',
-  'gemini-2.5-flash',
-  'gemini-2.0-flash',
-  'gemini-2.5-pro',
+  'gemini-1.5-flash'
 ];
 
 function sanitizeApiKey(key) {
