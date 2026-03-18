@@ -8,21 +8,26 @@ import BlueprintView from './components/BlueprintView';
 import SpecValidator from './components/SpecValidator';
 import { initializeGemini, analyzeSite, generateBlueprintImage, refineBlueprint, validateSpecs as aiValidateSpecs } from './services/gemini';
 import { convertUnits, generateFullEstimate } from './services/calculator';
+import Auth from './components/Auth';
+import AdminDashboard from './components/AdminDashboard';
 import MapSelector from './components/MapSelector';
-
+import { getStoredUser, getStoredToken, getMe, logout as apiLogout, saveProject } from './services/api';
 
 const PHASES = {
   WELCOME: 'welcome',
+  AUTH: 'auth',
   MAP_SELECT: 'map_select',
   UPLOAD: 'upload',
   SPECS: 'specs',
   VALIDATING: 'validating',
   ANALYZING: 'analyzing',
   RESULTS: 'results',
+  ADMIN: 'admin',
 };
 
 export default function App() {
   const [phase, setPhase] = useState(PHASES.WELCOME);
+  const [user, setUser] = useState(null);
   const [apiKey, setApiKey] = useState(null);
   const [showApiModal, setShowApiModal] = useState(false);
   const [photos, setPhotos] = useState({});
@@ -34,8 +39,23 @@ export default function App() {
   const [blueprintImage, setBlueprintImage] = useState(null);
   const [siteLocation, setSiteLocation] = useState(null);
 
-  // Load stored API key on mount
+  // Check for stored user and API key on mount
   useEffect(() => {
+    const storedUser = getStoredUser();
+    const storedToken = getStoredToken();
+    if (storedUser && storedToken) {
+      // Verify token is still valid
+      getMe()
+        .then(data => {
+          setUser(data.user);
+        })
+        .catch(() => {
+          // Token expired, clear
+          apiLogout();
+          setUser(null);
+        });
+    }
+
     const storedKey = localStorage.getItem('buildx_api_key');
     if (storedKey) {
       setApiKey(storedKey);
@@ -51,11 +71,30 @@ export default function App() {
     setPhase(PHASES.MAP_SELECT);
   };
 
-  const handleGetStarted = () => {
+  const handleLogin = (userData) => {
+    setUser(userData);
     if (apiKey) {
       setPhase(PHASES.MAP_SELECT);
     } else {
       setShowApiModal(true);
+    }
+  };
+
+  const handleLogout = () => {
+    apiLogout();
+    setUser(null);
+    setPhase(PHASES.WELCOME);
+  };
+
+  const handleGetStarted = () => {
+    if (user) {
+      if (apiKey) {
+        setPhase(PHASES.MAP_SELECT);
+      } else {
+        setShowApiModal(true);
+      }
+    } else {
+      setPhase(PHASES.AUTH);
     }
   };
 
@@ -107,6 +146,21 @@ export default function App() {
       generateBlueprintImage(userSpecs, aiAnalysis)
         .then(img => { if (img) setBlueprintImage(img); })
         .catch(err => console.warn('Image generation skipped:', err.message));
+
+      // Save project to backend
+      try {
+        await saveProject({
+          projectName: userSpecs.description
+            ? userSpecs.description.substring(0, 40) + (userSpecs.description.length > 40 ? '...' : '')
+            : 'Untitled Project',
+          specs: userSpecs,
+          aiAnalysis,
+          estimate: finalEstimate,
+          photosMeta: Object.keys(photos).map(side => ({ side, fileName: photos[side]?.name || side })),
+        });
+      } catch (saveErr) {
+        console.warn('Could not save project to server:', saveErr.message);
+      }
     } catch (err) {
       console.error('Analysis failed:', err);
       setError(err.message || 'Analysis failed. Please try again.');
@@ -158,15 +212,23 @@ export default function App() {
     <>
       <Header
         apiKey={apiKey}
+        user={user}
         onResetKey={() => {
           localStorage.removeItem('buildx_api_key');
           setApiKey(null);
           setPhase(PHASES.WELCOME);
         }}
+        onLogout={handleLogout}
+        onAdminPanel={() => setPhase(PHASES.ADMIN)}
+        onLoginClick={() => setPhase(PHASES.AUTH)}
       />
 
       {showApiModal && (
         <ApiKeyModal onKeySet={handleApiKeySet} />
+      )}
+
+      {phase === PHASES.AUTH && (
+        <Auth onLogin={handleLogin} />
       )}
 
       {phase === PHASES.WELCOME && (
@@ -306,6 +368,10 @@ export default function App() {
           onNewProject={handleNewProject}
           onRefine={handleRefine}
         />
+      )}
+
+      {phase === PHASES.ADMIN && (
+        <AdminDashboard onBack={() => setPhase(PHASES.WELCOME)} />
       )}
     </>
   );
