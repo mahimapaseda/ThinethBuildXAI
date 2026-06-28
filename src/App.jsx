@@ -240,42 +240,65 @@ export default function App() {
 
       {phase === PHASES.WELCOME && (
         <div className="welcome-container">
-          <div className="welcome-badge">⚡ AI-Powered Engineering</div>
-          <h1 className="welcome-title">
-            Build Anything, <em>Know Everything</em>
-          </h1>
-          <p className="welcome-subtitle">
-            Upload a photo of your site, enter basic dimensions, and let our AI engineer
-            generate a complete blueprint — foundation specs, concrete mix ratios,
-            material estimates, cost breakdowns, and step-by-step instructions. No experience needed.
-          </p>
+          <div className="welcome-hero">
+            <div className="welcome-badge">⚡ AI-Powered Engineering</div>
+            <h1 className="welcome-title">
+              Build Anything, <em>Know Everything</em>
+            </h1>
+            <p className="welcome-subtitle">
+              Upload site photos, enter dimensions, and get a complete engineering blueprint —
+              foundation specs, concrete mix ratios, material estimates, and step-by-step guides.
+            </p>
 
-          <div className="welcome-features">
-            <div className="glass-card feature-card">
-              <div className="feature-icon">📸</div>
-              <div className="feature-title">Site Photo Analysis</div>
-              <div className="feature-desc">AI reads your terrain, soil type, and conditions from photos of all sides.</div>
+            <div className="welcome-stats">
+              <div className="welcome-stat">
+                <strong>4</strong>
+                <span>Site Photos</span>
+              </div>
+              <div className="welcome-stat">
+                <strong>IS</strong>
+                <span>Standards</span>
+              </div>
+              <div className="welcome-stat">
+                <strong>AI</strong>
+                <span>Gemini Vision</span>
+              </div>
+              <div className="welcome-stat">
+                <strong>₹</strong>
+                <span>Cost Estimates</span>
+              </div>
             </div>
-            <div className="glass-card feature-card">
-              <div className="feature-icon">🧪</div>
-              <div className="feature-title">Concrete Mix Design</div>
-              <div className="feature-desc">Get exact ratios and quantities for M15 to M30 grade concrete.</div>
-            </div>
-            <div className="glass-card feature-card">
-              <div className="feature-icon">💰</div>
-              <div className="feature-title">Detailed Cost Estimate</div>
-              <div className="feature-desc">Material-by-material cost breakdown based on current market prices.</div>
-            </div>
-            <div className="glass-card feature-card">
-              <div className="feature-icon">📋</div>
-              <div className="feature-title">Step-by-Step Guide</div>
-              <div className="feature-desc">Follow beginner-friendly instructions from foundation to finish.</div>
+
+            <div className="welcome-cta">
+              <button className="btn btn-primary btn-large" onClick={handleGetStarted}>
+                Get Started — It's Free
+              </button>
+              <p className="welcome-cta-note">Bring your own Gemini API key · No account required</p>
             </div>
           </div>
 
-          <button className="btn btn-primary btn-large" onClick={handleGetStarted}>
-            🚀 Get Started — It's Free
-          </button>
+          <div className="welcome-features">
+            <div className="glass-card feature-card">
+              <div className="feature-icon-wrap">📸</div>
+              <div className="feature-title">Site Photo Analysis</div>
+              <div className="feature-desc">AI reads terrain, soil type, and conditions from photos of all sides.</div>
+            </div>
+            <div className="glass-card feature-card">
+              <div className="feature-icon-wrap">🧪</div>
+              <div className="feature-title">Concrete Mix Design</div>
+              <div className="feature-desc">Exact ratios and quantities for M15 to M30 grade concrete.</div>
+            </div>
+            <div className="glass-card feature-card">
+              <div className="feature-icon-wrap">💰</div>
+              <div className="feature-title">Detailed Cost Estimate</div>
+              <div className="feature-desc">Material-by-material breakdown based on current market prices.</div>
+            </div>
+            <div className="glass-card feature-card">
+              <div className="feature-icon-wrap">📋</div>
+              <div className="feature-title">Step-by-Step Guide</div>
+              <div className="feature-desc">Beginner-friendly instructions from foundation to finish.</div>
+            </div>
+          </div>
         </div>
       )}
 
@@ -334,8 +357,8 @@ export default function App() {
             <>
               <PhotoUpload onPhotosUpdate={handlePhotosUpdate} photos={photos} />
               {Object.keys(photos).length === 4 && (
-                <div style={{ textAlign: 'center', marginTop: '24px' }}>
-                  <button className="btn btn-primary btn-large" onClick={() => setPhase(PHASES.SPECS)}>
+                <div className="wizard-continue-wrap">
+                  <button className="btn btn-primary btn-large btn-block-mobile" onClick={() => setPhase(PHASES.SPECS)}>
                     Continue → Enter Specs
                   </button>
                 </div>

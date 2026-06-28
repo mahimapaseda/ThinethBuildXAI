@@ -359,7 +359,7 @@ export default function SpecForm({ onSubmit, onBack }) {
                     onChange={(e) => update('description', e.target.value)}
                     rows={4}
                 />
-                {errors.description && <span className="error-text" style={{ color: 'var(--accent-amber)' }}>{errors.description}</span>}
+                {errors.description && <span className="error-text error-text-warn">{errors.description}</span>}
             </div>
 
             {/* Actions */}
@@ -371,105 +371,6 @@ export default function SpecForm({ onSubmit, onBack }) {
                     🔬 Analyze & Generate Blueprint
                 </button>
             </div>
-
-            <style>{`
-                .error-text {
-                    color: var(--accent-red);
-                    font-size: 0.8rem;
-                    margin-top: 4px;
-                    display: block;
-                }
-                /* Building Type Grid */
-                .building-type-grid {
-                    display: grid;
-                    grid-template-columns: repeat(3, 1fr);
-                    gap: 8px;
-                    margin-top: 8px;
-                }
-                @media (max-width: 700px) {
-                    .building-type-grid { grid-template-columns: repeat(2, 1fr); }
-                }
-                @media (max-width: 450px) {
-                    .building-type-grid { grid-template-columns: 1fr; }
-                }
-                .building-type-btn {
-                    background: rgba(255,255,255,0.03);
-                    border: 1px solid rgba(255,255,255,0.08);
-                    border-radius: 10px;
-                    padding: 10px 12px;
-                    text-align: left;
-                    cursor: pointer;
-                    transition: all 0.2s ease;
-                    color: inherit;
-                }
-                .building-type-btn:hover {
-                    background: rgba(255,255,255,0.06);
-                    border-color: var(--accent-blue);
-                }
-                .building-type-btn.active {
-                    background: var(--accent-blue-glow);
-                    border-color: var(--accent-blue);
-                    box-shadow: 0 0 12px rgba(59,130,246,0.15);
-                }
-                .bt-label { display: block; font-weight: 600; font-size: 0.85rem; margin-bottom: 2px; }
-                .bt-desc { display: block; font-size: 0.7rem; color: var(--text-secondary); }
-
-                /* Presets */
-                .presets-grid {
-                    display: grid;
-                    grid-template-columns: repeat(2, 1fr);
-                    gap: 8px;
-                    margin-top: 8px;
-                }
-                @media (max-width: 600px) {
-                    .presets-grid { grid-template-columns: 1fr; }
-                }
-                .preset-btn {
-                    padding: 12px 14px;
-                    text-align: left;
-                    cursor: pointer;
-                    transition: all 0.2s ease;
-                    border: 1px solid rgba(255,255,255,0.08);
-                    background: rgba(255,255,255,0.02);
-                    color: inherit;
-                    border-radius: 10px;
-                }
-                .preset-btn:hover {
-                    border-color: var(--accent-emerald);
-                    background: rgba(16,185,129,0.05);
-                }
-                .preset-label { display: block; font-weight: 600; font-size: 0.85rem; color: var(--accent-emerald); margin-bottom: 3px; }
-                .preset-desc { display: block; font-size: 0.72rem; color: var(--text-secondary); }
-                .preset-custom {
-                    border-style: dashed;
-                }
-
-                /* Tooltips */
-                .tooltip-trigger {
-                    position: relative;
-                    cursor: help;
-                    font-size: 0.8rem;
-                    margin-left: 4px;
-                }
-                .tooltip-popup {
-                    position: absolute;
-                    bottom: 120%;
-                    left: 50%;
-                    transform: translateX(-50%);
-                    width: 250px;
-                    background: rgba(15,17,23,0.95);
-                    border: 1px solid rgba(255,255,255,0.15);
-                    color: var(--text-secondary);
-                    font-size: 0.75rem;
-                    padding: 10px 12px;
-                    border-radius: 8px;
-                    z-index: 100;
-                    line-height: 1.4;
-                    box-shadow: 0 8px 24px rgba(0,0,0,0.4);
-                    font-weight: 400;
-                    pointer-events: none;
-                }
-            `}</style>
         </div>
     );
 }

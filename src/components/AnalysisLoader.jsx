@@ -34,9 +34,7 @@ export default function AnalysisLoader() {
         <div className="loader-container">
             <div className="loader-spinner"></div>
             <h2 className="loader-title">Building Your Blueprint</h2>
-            <p style={{ color: 'var(--text-secondary)', marginBottom: '8px' }}>
-                Our AI engineer is analyzing your project...
-            </p>
+            <p className="loader-subtitle">Our AI engineer is analyzing your project...</p>
 
             <div className="loader-steps">
                 {ANALYSIS_STEPS.map((step, index) => (
@@ -53,17 +51,7 @@ export default function AnalysisLoader() {
             </div>
 
             {showSlowMsg && (
-                <div style={{
-                    marginTop: '20px',
-                    padding: '12px 16px',
-                    background: 'rgba(255, 180, 0, 0.1)',
-                    border: '1px solid rgba(255, 180, 0, 0.3)',
-                    borderRadius: '10px',
-                    color: '#ffb400',
-                    fontSize: '0.85rem',
-                    textAlign: 'center',
-                    lineHeight: '1.5'
-                }}>
+                <div className="loader-slow-msg">
                     ⏳ Taking longer than expected — the AI is retrying different models. Please wait...
                 </div>
             )}

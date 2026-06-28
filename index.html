@@ -3,11 +3,21 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="description" content="BuildX AI - AI-powered construction assistant. Upload a site photo, enter dimensions, and get complete engineering blueprints with foundation specs, concrete mix ratios, and step-by-step building instructions." />
-    <meta name="theme-color" content="#0f1117" />
+    <meta name="theme-color" content="#0c0f14" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+    <script>
+      (function () {
+        var t = localStorage.getItem('buildx_theme') || 'system';
+        var dark = t === 'system'
+          ? window.matchMedia('(prefers-color-scheme: dark)').matches
+          : t === 'dark';
+        document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+        document.querySelector('meta[name="theme-color"]').content = dark ? '#0c0f14' : '#f4f6fb';
+      })();
+    </script>
     <title>BuildX AI — Construction Blueprint Generator</title>
   </head>
   <body>

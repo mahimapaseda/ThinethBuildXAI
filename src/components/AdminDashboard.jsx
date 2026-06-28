@@ -113,6 +113,7 @@ export default function AdminDashboard({ onBack }) {
             {tab === 'users' && !selectedUser && (
                 <div className="glass-card admin-card">
                     {loading ? <div className="admin-loading">Loading users...</div> : (
+                        <div className="admin-table-wrap">
                         <table className="admin-table">
                             <thead>
                                 <tr>
@@ -154,6 +155,7 @@ export default function AdminDashboard({ onBack }) {
                                 ))}
                             </tbody>
                         </table>
+                        </div>
                     )}
                 </div>
             )}
@@ -200,6 +202,7 @@ export default function AdminDashboard({ onBack }) {
             {tab === 'projects' && !selectedProject && (
                 <div className="glass-card admin-card">
                     {loading ? <div className="admin-loading">Loading projects...</div> : (
+                        <div className="admin-table-wrap">
                         <table className="admin-table">
                             <thead>
                                 <tr>
@@ -242,6 +245,7 @@ export default function AdminDashboard({ onBack }) {
                                 ))}
                             </tbody>
                         </table>
+                        </div>
                     )}
                 </div>
             )}
@@ -316,142 +320,6 @@ export default function AdminDashboard({ onBack }) {
                 </div>
             )}
 
-            <style>{`
-                .admin-container { padding: 32px; max-width: 1300px; margin: 0 auto; }
-                .admin-top-bar { margin-bottom: 24px; }
-                .admin-top-bar h2 { margin: 12px 0 4px; font-size: 1.75rem; }
-                .admin-top-bar p { color: var(--text-secondary); }
-
-                .admin-tabs {
-                    display: flex; gap: 4px; margin-bottom: 24px;
-                    background: var(--bg-glass); padding: 4px; border-radius: var(--radius-md);
-                    border: 1px solid var(--border-subtle); width: fit-content;
-                }
-                .admin-tab {
-                    padding: 10px 24px; border: none; border-radius: var(--radius-sm);
-                    background: transparent; color: var(--text-secondary); cursor: pointer;
-                    font-family: var(--font-main); font-weight: 600; font-size: 0.9rem;
-                    transition: all 0.2s;
-                }
-                .admin-tab.active { background: var(--accent-amber); color: #0f1117; }
-                .admin-tab:hover:not(.active) { color: var(--text-primary); background: rgba(255,255,255,0.05); }
-
-                .admin-error {
-                    background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.3);
-                    color: #ef4444; padding: 12px 16px; border-radius: 8px; margin-bottom: 16px;
-                    font-size: 0.85rem;
-                }
-
-                .admin-stats-grid {
-                    display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px;
-                }
-                .stat-card {
-                    padding: 24px; text-align: center; position: relative;
-                    border: 1px solid rgba(255,255,255,0.06);
-                }
-                .stat-icon { font-size: 1.5rem; margin-bottom: 8px; }
-                .stat-val { font-size: 2.5rem; font-weight: 800; margin-bottom: 4px; }
-                .stat-label { font-size: 0.8rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px; }
-
-                .admin-card { overflow-x: auto; padding: 0; }
-                .admin-table { width: 100%; border-collapse: collapse; text-align: left; }
-                .admin-table th, .admin-table td { padding: 14px 20px; border-bottom: 1px solid rgba(255,255,255,0.05); }
-                .admin-table th {
-                    background: rgba(255,255,255,0.02); font-size: 0.8rem;
-                    text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-secondary);
-                }
-                .admin-table tr:hover { background: rgba(255,255,255,0.02); }
-
-                .admin-loading { padding: 40px; text-align: center; color: var(--text-secondary); }
-
-                .status-badge {
-                    font-size: 0.7rem; padding: 4px 10px; border-radius: 4px;
-                    font-weight: 600; display: inline-block; text-transform: capitalize;
-                }
-                .status-badge.active { background: rgba(16,185,129,0.1); color: #10b981; }
-                .status-badge.suspended { background: rgba(239,68,68,0.1); color: #ef4444; }
-                .status-badge.completed { background: rgba(16,185,129,0.1); color: #10b981; }
-                .status-badge.pending { background: rgba(245,158,11,0.1); color: #f59e0b; }
-                .status-badge.reviewed { background: rgba(59,130,246,0.1); color: #3b82f6; }
-
-                .status-select {
-                    background: var(--bg-glass); border: 1px solid var(--border-medium);
-                    color: var(--text-primary); padding: 4px 8px; border-radius: 4px;
-                    font-size: 0.8rem; cursor: pointer;
-                }
-                .status-select option { background: var(--bg-secondary); }
-
-                .project-count {
-                    display: inline-flex; align-items: center; justify-content: center;
-                    min-width: 28px; height: 28px; background: var(--accent-blue-glow);
-                    color: var(--accent-blue); border-radius: 50%; font-weight: 700; font-size: 0.85rem;
-                }
-
-                .action-buttons { display: flex; gap: 6px; }
-                .btn-mini {
-                    width: 32px; height: 32px; border: 1px solid var(--border-medium);
-                    background: transparent; border-radius: 6px; cursor: pointer;
-                    display: flex; align-items: center; justify-content: center;
-                    font-size: 0.9rem; transition: all 0.2s;
-                }
-                .btn-mini:hover { background: var(--bg-glass-hover); }
-                .btn-mini.danger:hover { background: rgba(239,68,68,0.1); border-color: rgba(239,68,68,0.3); }
-
-                /* User Detail View */
-                .user-detail-view { margin-top: 16px; }
-                .user-detail-card { padding: 32px; margin-top: 16px; }
-                .user-detail-header { display: flex; align-items: center; gap: 16px; margin-bottom: 24px; }
-                .user-avatar {
-                    width: 56px; height: 56px; border-radius: 50%;
-                    background: linear-gradient(135deg, var(--accent-amber), #d97706);
-                    display: flex; align-items: center; justify-content: center;
-                    font-size: 1.5rem; font-weight: 800; color: #0f1117;
-                }
-                .user-detail-header h3 { margin: 0 0 4px; }
-                .user-detail-header p { color: var(--text-secondary); margin: 0; font-size: 0.9rem; }
-
-                .detail-grid, .user-detail-grid {
-                    display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
-                }
-                .detail-item {
-                    display: flex; flex-direction: column; gap: 4px;
-                    background: rgba(255,255,255,0.02); padding: 12px; border-radius: 8px;
-                }
-                .detail-label { font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
-                .detail-desc { margin-top: 12px; }
-                .detail-desc p { font-size: 0.85rem; color: var(--text-secondary); line-height: 1.5; margin-top: 4px; }
-
-                .user-projects-list { display: flex; flex-direction: column; gap: 8px; }
-                .project-mini-card { padding: 12px 16px; cursor: pointer; border: 1px solid var(--border-subtle); }
-                .project-mini-card:hover { border-color: var(--accent-amber); }
-                .project-mini-name { font-weight: 600; font-size: 0.9rem; }
-                .project-mini-meta { font-size: 0.75rem; color: var(--text-secondary); margin-top: 4px; }
-
-                /* Project Detail Modal */
-                .project-detail-overlay {
-                    position: fixed; inset: 0; background: rgba(0,0,0,0.7);
-                    backdrop-filter: blur(8px); display: flex; align-items: center; justify-content: center;
-                    z-index: 1000; padding: 24px;
-                }
-                .project-detail-modal {
-                    width: 100%; max-width: 800px; max-height: 85vh; overflow-y: auto;
-                    padding: 32px; border: 1px solid rgba(255,255,255,0.1);
-                }
-                .modal-top-bar {
-                    display: flex; justify-content: space-between; align-items: center;
-                    margin-bottom: 24px; padding-bottom: 16px; border-bottom: 1px solid rgba(255,255,255,0.06);
-                }
-                .modal-top-bar h3 { margin: 0; font-size: 1.3rem; }
-                .project-detail-body { display: flex; flex-direction: column; gap: 24px; }
-                .detail-section h4 { font-size: 1rem; margin-bottom: 12px; color: var(--accent-amber); }
-
-                .text-muted { color: var(--text-secondary); font-size: 0.85rem; }
-
-                @media (max-width: 768px) {
-                    .admin-stats-grid { grid-template-columns: repeat(2, 1fr); }
-                    .detail-grid, .user-detail-grid { grid-template-columns: 1fr; }
-                }
-            `}</style>
         </div>
     );
 }

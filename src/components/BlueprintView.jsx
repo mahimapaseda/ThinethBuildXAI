@@ -189,7 +189,7 @@ export default function BlueprintView({ analysis, estimate, specs, blueprintImag
                 </div>
             )}
 
-            <div className="blueprint-grid">
+            <div className="blueprint-grid blueprint-grid-results">
                 {/* ─── Site & Soil Analysis ─── */}
                 <div className="glass-card blueprint-card">
                     <div className="blueprint-card-header">
@@ -493,8 +493,6 @@ export default function BlueprintView({ analysis, estimate, specs, blueprintImag
                 .blueprint-container { max-width: 1000px; margin: 0 auto; padding: 40px 20px; }
                 .blueprint-header { text-align: center; margin-bottom: 24px; }
                 .blueprint-header h1 { font-size: 2.2rem; margin-bottom: 8px; }
-                .blueprint-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 24px; }
-                .blueprint-full-width { grid-column: span 2; }
                 .specs-summary { color: var(--text-secondary); font-size: 0.95rem; margin-top: 8px; }
 
                 .disclaimer-banner {
@@ -605,7 +603,7 @@ export default function BlueprintView({ analysis, estimate, specs, blueprintImag
 
                 /* Refinement */
                 .refinement-input-box { margin-top: 16px; }
-                .refinement-input-box textarea { width: 100%; min-height: 100px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 12px; color: #fff; font-family: inherit; resize: vertical; margin-bottom: 12px; }
+                .refinement-input-box textarea { width: 100%; min-height: 100px; background: var(--bg-input); border: 1px solid var(--border-medium); border-radius: 8px; padding: 12px; color: var(--text-primary); font-family: inherit; resize: vertical; margin-bottom: 12px; }
                 .refinement-input-box textarea:focus { outline: none; border-color: var(--accent-purple); box-shadow: 0 0 0 2px rgba(168, 85, 247, 0.2); }
 
                 /* Actions */
@@ -616,10 +614,19 @@ export default function BlueprintView({ analysis, estimate, specs, blueprintImag
                 .floor-plan-container svg { max-width: 100%; height: auto; }
 
                 @media (max-width: 768px) {
-                    .blueprint-grid { grid-template-columns: 1fr; }
-                    .blueprint-full-width { grid-column: span 1; }
-                    .estimate-grid { grid-template-columns: repeat(3, 1fr); }
-                    .blueprint-actions { grid-column: span 1; }
+                    .blueprint-container { padding: 20px 14px 40px; }
+                    .blueprint-header h1 { font-size: 1.5rem; }
+                    .blueprint-card { padding: 18px; }
+                    .estimate-grid { grid-template-columns: repeat(2, 1fr); }
+                    .blueprint-actions { flex-direction: column; }
+                    .blueprint-actions .btn { width: 100%; }
+                    .location-info-banner { flex-direction: column; }
+                }
+
+                @media (max-width: 480px) {
+                    .estimate-grid { grid-template-columns: 1fr 1fr; }
+                    .est-val { font-size: 1.1rem; }
+                    .cost-table { min-width: 420px; }
                 }
 
                 /* Location Info Banner */
