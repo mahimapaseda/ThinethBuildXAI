@@ -11,6 +11,14 @@ node_modules
 dist
 dist-ssr
 *.local
+.env
+.env.*
+!.env.example
+
+# SQLite database & uploads (never commit user data)
+server/buildx.db
+server/buildx.db-*
+server/uploads/
 
 # Editor directories and files
 .vscode/*

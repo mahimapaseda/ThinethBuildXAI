@@ -1449,6 +1449,16 @@ h3 { font-size: 1.25rem; }
   color: var(--text-secondary);
   line-height: 1.6;
 }
+.mock-fallback-banner {
+  background: var(--accent-amber-dim, rgba(245, 158, 11, 0.12));
+  border: 1px solid var(--accent-amber-glow, rgba(245, 158, 11, 0.45));
+  border-radius: var(--radius-md);
+  padding: 16px 20px;
+  margin-bottom: 16px;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
 .safety-panel { background: var(--bg-card); border: 1px solid var(--accent-red-glow); border-radius: var(--radius-md); margin-bottom: 24px; overflow: hidden; }
 .safety-panel-header { display: flex; justify-content: space-between; align-items: center; padding: 16px 20px; cursor: pointer; background: var(--accent-red-dim); min-height: 44px; }
 .safety-panel-header h3 { margin: 0; font-size: 1rem; color: var(--accent-red); }

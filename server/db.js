@@ -62,6 +62,10 @@ export function getUserByEmail(email) {
     return db.prepare('SELECT * FROM users WHERE email = ?').get(email);
 }
 
+export function hasAdminUser() {
+    return db.prepare('SELECT COUNT(*) as count FROM users WHERE is_admin = 1').get().count > 0;
+}
+
 export function getUserById(id) {
     return db.prepare('SELECT id, name, email, phone, address, is_admin, status, created_at, updated_at FROM users WHERE id = ?').get(id);
 }

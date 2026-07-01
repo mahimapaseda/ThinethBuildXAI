@@ -1,6 +1,5 @@
 /**
  * BuildX AI – Express Backend Server
- * Provides REST API for auth, users, projects, and admin operations.
  */
 import express from 'express';
 import cors from 'cors';
@@ -15,34 +14,116 @@ import fs from 'fs';
 import {
     createUser, getUserByEmail, getUserById, getAllUsers, updateUser, deleteUser,
     createProject, getProjectById, getProjectsByUser, getAllProjects, updateProject, deleteProject,
-    getDashboardStats
+    getDashboardStats, hasAdminUser
 } from './db.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
+const ROOT_DIR = join(__dirname, '..');
+
+function loadEnvFile(filename) {
+    const path = join(ROOT_DIR, filename);
+    if (!fs.existsSync(path)) return;
+    for (const line of fs.readFileSync(path, 'utf8').split('\n')) {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed.startsWith('#')) continue;
+        const eq = trimmed.indexOf('=');
+        if (eq === -1) continue;
+        const key = trimmed.slice(0, eq).trim();
+        let val = trimmed.slice(eq + 1).trim();
+        if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+            val = val.slice(1, -1);
+        }
+        if (!process.env[key]) process.env[key] = val;
+    }
+}
+
+loadEnvFile('.env.local');
+loadEnvFile('.env');
+
+const isProd = process.env.NODE_ENV === 'production';
+const PORT = process.env.PORT || 3001;
+const JWT_SECRET = process.env.JWT_SECRET || (isProd ? null : 'buildx-dev-only-secret');
+const ADMIN_EMAIL = (process.env.ADMIN_EMAIL || '').toLowerCase().trim();
+const ADMIN_SECRET = process.env.ADMIN_SECRET || '';
+
+if (!JWT_SECRET) {
+    console.error('FATAL: Set JWT_SECRET in production.');
+    process.exit(1);
+}
+if (isProd && !ADMIN_EMAIL) {
+    console.warn('WARN: ADMIN_EMAIL not set — no one can register as admin.');
+}
+
+const corsOrigins = (process.env.CORS_ORIGINS || '')
+    .split(',')
+    .map(s => s.trim())
+    .filter(Boolean);
 
 const app = express();
-const PORT = process.env.PORT || 3001;
-const JWT_SECRET = process.env.JWT_SECRET || 'buildx-ai-secret-key-2026';
 
-// ─── Middleware ────────────────────────────────────────────────────────────────
-app.use(cors());
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+app.use(cors({
+    origin: (origin, cb) => {
+        if (!origin || corsOrigins.length === 0 || corsOrigins.includes(origin)) {
+            cb(null, true);
+        } else {
+            cb(new Error('Not allowed by CORS'));
+        }
+    },
+    credentials: true,
+}));
 
-// Serve uploaded photos
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+app.use((_req, res, next) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+    next();
+});
+
+// Simple in-memory rate limit for auth routes
+const rateBuckets = new Map();
+function rateLimit(windowMs, max) {
+    return (req, res, next) => {
+        const key = `${req.ip}:${req.path}`;
+        const now = Date.now();
+        let bucket = rateBuckets.get(key);
+        if (!bucket || now > bucket.reset) {
+            bucket = { count: 0, reset: now + windowMs };
+            rateBuckets.set(key, bucket);
+        }
+        bucket.count += 1;
+        if (bucket.count > max) {
+            return res.status(429).json({ error: 'Too many attempts. Please wait a minute and try again.' });
+        }
+        next();
+    };
+}
+
 const uploadsDir = join(__dirname, 'uploads');
 if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
 app.use('/uploads', express.static(uploadsDir));
 
-// Multer config for photo uploads
-const storage = multer.diskStorage({
-    destination: (req, file, cb) => cb(null, uploadsDir),
-    filename: (req, file, cb) => cb(null, `${Date.now()}-${file.originalname}`)
-});
-const upload = multer({ storage, limits: { fileSize: 20 * 1024 * 1024 } });
+function safeFilename(originalName) {
+    const base = (originalName || 'photo').replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 80);
+    return `${Date.now()}-${base}`;
+}
 
-// ─── Auth Middleware ──────────────────────────────────────────────────────────
+const storage = multer.diskStorage({
+    destination: (_req, _file, cb) => cb(null, uploadsDir),
+    filename: (_req, file, cb) => cb(null, safeFilename(file.originalname)),
+});
+const upload = multer({
+    storage,
+    limits: { fileSize: 20 * 1024 * 1024 },
+    fileFilter: (_req, file, cb) => {
+        if (file.mimetype?.startsWith('image/')) cb(null, true);
+        else cb(new Error('Only image uploads are allowed'));
+    },
+});
+
 function authMiddleware(req, res, next) {
     const token = req.headers.authorization?.replace('Bearer ', '');
     if (!token) return res.status(401).json({ error: 'Authentication required' });
@@ -53,7 +134,7 @@ function authMiddleware(req, res, next) {
         if (user.status === 'suspended') return res.status(403).json({ error: 'Account suspended' });
         req.user = user;
         next();
-    } catch (err) {
+    } catch {
         return res.status(401).json({ error: 'Invalid or expired token' });
     }
 }
@@ -63,10 +144,14 @@ function adminMiddleware(req, res, next) {
     next();
 }
 
-// ─── Auth Routes ──────────────────────────────────────────────────────────────
-app.post('/api/auth/register', (req, res) => {
+function grantAdminOnRegister(email, adminSecret) {
+    if (!ADMIN_EMAIL || !ADMIN_SECRET) return false;
+    return email.toLowerCase().trim() === ADMIN_EMAIL && adminSecret === ADMIN_SECRET;
+}
+
+app.post('/api/auth/register', rateLimit(60_000, 10), (req, res) => {
     try {
-        const { name, email, phone, address, password } = req.body;
+        const { name, email, phone, address, password, adminSecret } = req.body;
 
         if (!name || !email || !password) {
             return res.status(400).json({ error: 'Name, email, and password are required.' });
@@ -74,20 +159,22 @@ app.post('/api/auth/register', (req, res) => {
         if (password.length < 8) {
             return res.status(400).json({ error: 'Password must be at least 8 characters.' });
         }
-
-        const existing = getUserByEmail(email);
-        if (existing) {
+        if (getUserByEmail(email)) {
             return res.status(409).json({ error: 'An account with this email already exists.' });
+        }
+
+        const isAdminRequest = grantAdminOnRegister(email, adminSecret);
+        if (isAdminRequest && hasAdminUser()) {
+            return res.status(403).json({ error: 'An admin account already exists.' });
         }
 
         const passwordHash = bcrypt.hashSync(password, 10);
         const id = 'user_' + uuidv4().replace(/-/g, '').substring(0, 12);
-        const isAdmin = email === 'admin@buildx.ai' ? 1 : 0;
+        createUser({ id, name, email, phone, address, passwordHash });
 
-        const user = createUser({ id, name, email, phone, address, passwordHash });
-
-        // Set admin flag if it's the admin email
-        if (isAdmin) updateUser(id, { is_admin: 1 });
+        if (isAdminRequest) {
+            updateUser(id, { is_admin: 1 });
+        }
 
         const token = jwt.sign({ userId: id }, JWT_SECRET, { expiresIn: '7d' });
         const freshUser = getUserById(id);
@@ -102,7 +189,7 @@ app.post('/api/auth/register', (req, res) => {
                 address: freshUser.address,
                 isAdmin: !!freshUser.is_admin,
                 status: freshUser.status,
-            }
+            },
         });
     } catch (err) {
         console.error('Registration error:', err);
@@ -110,30 +197,22 @@ app.post('/api/auth/register', (req, res) => {
     }
 });
 
-app.post('/api/auth/login', (req, res) => {
+app.post('/api/auth/login', rateLimit(60_000, 20), (req, res) => {
     try {
         const { email, password } = req.body;
-
         if (!email || !password) {
             return res.status(400).json({ error: 'Email and password are required.' });
         }
 
         const user = getUserByEmail(email);
-        if (!user) {
+        if (!user || !bcrypt.compareSync(password, user.password_hash)) {
             return res.status(401).json({ error: 'Invalid email or password.' });
         }
-
-        const validPassword = bcrypt.compareSync(password, user.password_hash);
-        if (!validPassword) {
-            return res.status(401).json({ error: 'Invalid email or password.' });
-        }
-
         if (user.status === 'suspended') {
             return res.status(403).json({ error: 'Your account has been suspended. Please contact support.' });
         }
 
         const token = jwt.sign({ userId: user.id }, JWT_SECRET, { expiresIn: '7d' });
-
         res.json({
             token,
             user: {
@@ -144,7 +223,7 @@ app.post('/api/auth/login', (req, res) => {
                 address: user.address,
                 isAdmin: !!user.is_admin,
                 status: user.status,
-            }
+            },
         });
     } catch (err) {
         console.error('Login error:', err);
@@ -162,22 +241,20 @@ app.get('/api/auth/me', authMiddleware, (req, res) => {
             address: req.user.address,
             isAdmin: !!req.user.is_admin,
             status: req.user.status,
-        }
+        },
     });
 });
 
-// ─── User Profile Routes ─────────────────────────────────────────────────────
 app.put('/api/users/profile', authMiddleware, (req, res) => {
     try {
         const { name, phone, address } = req.body;
         const updated = updateUser(req.user.id, { name, phone, address });
         res.json({ user: updated });
-    } catch (err) {
+    } catch {
         res.status(500).json({ error: 'Failed to update profile.' });
     }
 });
 
-// ─── Project Routes ───────────────────────────────────────────────────────────
 app.post('/api/projects', authMiddleware, (req, res) => {
     try {
         const { projectName, specs, aiAnalysis, estimate, photosMeta } = req.body;
@@ -189,7 +266,7 @@ app.post('/api/projects', authMiddleware, (req, res) => {
             specs,
             aiAnalysis,
             estimate,
-            photosMeta
+            photosMeta,
         });
         res.status(201).json({ project });
     } catch (err) {
@@ -200,9 +277,8 @@ app.post('/api/projects', authMiddleware, (req, res) => {
 
 app.get('/api/projects', authMiddleware, (req, res) => {
     try {
-        const projects = getProjectsByUser(req.user.id);
-        res.json({ projects });
-    } catch (err) {
+        res.json({ projects: getProjectsByUser(req.user.id) });
+    } catch {
         res.status(500).json({ error: 'Failed to load projects.' });
     }
 });
@@ -211,12 +287,11 @@ app.get('/api/projects/:id', authMiddleware, (req, res) => {
     try {
         const project = getProjectById(req.params.id);
         if (!project) return res.status(404).json({ error: 'Project not found.' });
-        // Users can only view their own projects, admins can view all
         if (project.user_id !== req.user.id && !req.user.is_admin) {
             return res.status(403).json({ error: 'Access denied.' });
         }
         res.json({ project });
-    } catch (err) {
+    } catch {
         res.status(500).json({ error: 'Failed to load project.' });
     }
 });
@@ -228,9 +303,8 @@ app.put('/api/projects/:id', authMiddleware, (req, res) => {
         if (project.user_id !== req.user.id && !req.user.is_admin) {
             return res.status(403).json({ error: 'Access denied.' });
         }
-        const updated = updateProject(req.params.id, req.body);
-        res.json({ project: updated });
-    } catch (err) {
+        res.json({ project: updateProject(req.params.id, req.body) });
+    } catch {
         res.status(500).json({ error: 'Failed to update project.' });
     }
 });
@@ -244,12 +318,11 @@ app.delete('/api/projects/:id', authMiddleware, (req, res) => {
         }
         deleteProject(req.params.id);
         res.json({ success: true });
-    } catch (err) {
+    } catch {
         res.status(500).json({ error: 'Failed to delete project.' });
     }
 });
 
-// Photo upload
 app.post('/api/projects/upload-photos', authMiddleware, upload.array('photos', 4), (req, res) => {
     try {
         const photosMeta = req.files.map(f => ({
@@ -257,20 +330,18 @@ app.post('/api/projects/upload-photos', authMiddleware, upload.array('photos', 4
             originalName: f.originalname,
             path: `/uploads/${f.filename}`,
             size: f.size,
-            mimeType: f.mimetype
+            mimeType: f.mimetype,
         }));
         res.json({ photos: photosMeta });
-    } catch (err) {
+    } catch {
         res.status(500).json({ error: 'Failed to upload photos.' });
     }
 });
 
-// ─── Admin Routes ─────────────────────────────────────────────────────────────
 app.get('/api/admin/stats', authMiddleware, adminMiddleware, (req, res) => {
     try {
-        const stats = getDashboardStats();
-        res.json({ stats });
-    } catch (err) {
+        res.json({ stats: getDashboardStats() });
+    } catch {
         res.status(500).json({ error: 'Failed to load stats.' });
     }
 });
@@ -279,7 +350,7 @@ app.get('/api/admin/users', authMiddleware, adminMiddleware, (req, res) => {
     try {
         const users = getAllUsers();
         res.json({ users: users.map(u => ({ ...u, isAdmin: !!u.is_admin })) });
-    } catch (err) {
+    } catch {
         res.status(500).json({ error: 'Failed to load users.' });
     }
 });
@@ -288,9 +359,8 @@ app.get('/api/admin/users/:id', authMiddleware, adminMiddleware, (req, res) => {
     try {
         const user = getUserById(req.params.id);
         if (!user) return res.status(404).json({ error: 'User not found.' });
-        const projects = getProjectsByUser(req.params.id);
-        res.json({ user: { ...user, isAdmin: !!user.is_admin }, projects });
-    } catch (err) {
+        res.json({ user: { ...user, isAdmin: !!user.is_admin }, projects: getProjectsByUser(req.params.id) });
+    } catch {
         res.status(500).json({ error: 'Failed to load user details.' });
     }
 });
@@ -299,7 +369,7 @@ app.put('/api/admin/users/:id', authMiddleware, adminMiddleware, (req, res) => {
     try {
         const updated = updateUser(req.params.id, req.body);
         res.json({ user: { ...updated, isAdmin: !!updated.is_admin } });
-    } catch (err) {
+    } catch {
         res.status(500).json({ error: 'Failed to update user.' });
     }
 });
@@ -311,25 +381,23 @@ app.delete('/api/admin/users/:id', authMiddleware, adminMiddleware, (req, res) =
         }
         deleteUser(req.params.id);
         res.json({ success: true });
-    } catch (err) {
+    } catch {
         res.status(500).json({ error: 'Failed to delete user.' });
     }
 });
 
 app.get('/api/admin/projects', authMiddleware, adminMiddleware, (req, res) => {
     try {
-        const projects = getAllProjects();
-        res.json({ projects });
-    } catch (err) {
+        res.json({ projects: getAllProjects() });
+    } catch {
         res.status(500).json({ error: 'Failed to load projects.' });
     }
 });
 
 app.put('/api/admin/projects/:id', authMiddleware, adminMiddleware, (req, res) => {
     try {
-        const updated = updateProject(req.params.id, req.body);
-        res.json({ project: updated });
-    } catch (err) {
+        res.json({ project: updateProject(req.params.id, req.body) });
+    } catch {
         res.status(500).json({ error: 'Failed to update project.' });
     }
 });
@@ -338,13 +406,14 @@ app.delete('/api/admin/projects/:id', authMiddleware, adminMiddleware, (req, res
     try {
         deleteProject(req.params.id);
         res.json({ success: true });
-    } catch (err) {
+    } catch {
         res.status(500).json({ error: 'Failed to delete project.' });
     }
 });
 
-// ─── Start Server ─────────────────────────────────────────────────────────────
 app.listen(PORT, () => {
     console.log(`\n🏗️  BuildX AI Backend running on http://localhost:${PORT}`);
-    console.log(`   API: http://localhost:${PORT}/api\n`);
+    console.log(`   API: http://localhost:${PORT}/api`);
+    if (!isProd) console.log(`   CORS: ${corsOrigins.length ? corsOrigins.join(', ') : 'all origins (dev)'}\n`);
+    else console.log('');
 });

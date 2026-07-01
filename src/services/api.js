@@ -46,10 +46,10 @@ async function request(endpoint, options = {}) {
 }
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
-export async function register({ name, email, phone, address, password }) {
+export async function register({ name, email, phone, address, password, adminSecret }) {
     const data = await request('/auth/register', {
         method: 'POST',
-        body: JSON.stringify({ name, email, phone, address, password }),
+        body: JSON.stringify({ name, email, phone, address, password, adminSecret }),
     });
     localStorage.setItem('buildx_token', data.token);
     localStorage.setItem('buildx_user', JSON.stringify(data.user));

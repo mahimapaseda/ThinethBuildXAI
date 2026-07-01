@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { calculateDetailedCost, formatIndianCurrency, crossValidateAnalysis } from '../services/engineeringDB';
+import { saveProject } from '../services/api';
 
 /**
  * Engineering glossary for beginner-friendly tooltips
@@ -83,10 +84,12 @@ function AiFloorPlanImage({ specs, analysis }) {
   );
 }
 
-export default function BlueprintView({ analysis, estimate, specs, blueprintImage, siteLocation, onNewProject, onRefine }) {
+export default function BlueprintView({ analysis, estimate, specs, blueprintImage, siteLocation, photos = {}, user, onRequestLogin, onNewProject, onRefine }) {
     const [feedback, setFeedback] = useState('');
     const [isRefining, setIsRefining] = useState(false);
     const [activeSection, setActiveSection] = useState(null);
+    const [saveState, setSaveState] = useState('idle'); // idle | saving | saved | error
+    const [saveError, setSaveError] = useState('');
 
     if (!analysis) return null;
 
@@ -131,6 +134,34 @@ export default function BlueprintView({ analysis, estimate, specs, blueprintImag
         }
     };
 
+    const handleSaveProject = async () => {
+        if (!user) {
+            onRequestLogin?.();
+            return;
+        }
+        setSaveState('saving');
+        setSaveError('');
+        try {
+            const projectName = `${specs.length}x${specs.width} ${specs.unit} — ${specs.floors}F ${specs.buildingType?.replace(/_/g, ' ') || 'build'}`;
+            const photosMeta = Object.entries(photos).map(([side, file]) => ({
+                side,
+                name: file?.name || side,
+                size: file?.size,
+            }));
+            await saveProject({
+                projectName,
+                specs,
+                aiAnalysis: analysis,
+                estimate,
+                photosMeta,
+            });
+            setSaveState('saved');
+        } catch (err) {
+            setSaveState('error');
+            setSaveError(err.message);
+        }
+    };
+
     const toggleSection = (id) => setActiveSection(activeSection === id ? null : id);
 
     return (
@@ -152,6 +183,12 @@ export default function BlueprintView({ analysis, estimate, specs, blueprintImag
             </div>
 
             {/* ─── Disclaimer ─── */}
+            {analysis._isMockFallback && (
+                <div className="mock-fallback-banner">
+                    <strong>⚠️ Demo data:</strong> The Gemini API quota was exceeded or unavailable.
+                    This report uses sample engineering data — not a real AI analysis. Retry later with a valid API key.
+                </div>
+            )}
             <div className="disclaimer-banner">
                 <strong>⚠️ Important Disclaimer:</strong> This report is AI-generated and cross-validated against IS 456/ACI 318 standards.
                 While calculations follow engineering rules, always consult a licensed structural engineer before actual construction.
@@ -485,8 +522,16 @@ export default function BlueprintView({ analysis, estimate, specs, blueprintImag
                 {/* ─── Actions ─── */}
                 <div className="blueprint-actions">
                     <button className="btn btn-secondary btn-large" onClick={() => window.print()}>🖨️ Print Report</button>
+                    <button
+                        className="btn btn-secondary btn-large"
+                        onClick={handleSaveProject}
+                        disabled={saveState === 'saving' || saveState === 'saved'}
+                    >
+                        {saveState === 'saving' ? '💾 Saving...' : saveState === 'saved' ? '✅ Saved' : user ? '💾 Save Project' : '🔐 Sign in to Save'}
+                    </button>
                     <button className="btn btn-primary btn-large" onClick={onNewProject}>🆕 Start New Project</button>
                 </div>
+                {saveError && <p className="field-error" style={{ textAlign: 'center', marginTop: '12px' }}>{saveError}</p>}
             </div>
 
             <style>{`

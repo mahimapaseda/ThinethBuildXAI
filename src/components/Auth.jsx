@@ -10,6 +10,7 @@ export default function Auth({ onLogin }) {
         name: '',
         phone: '',
         address: '',
+        adminSecret: '',
     });
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
@@ -61,6 +62,7 @@ export default function Auth({ onLogin }) {
                     phone: formData.phone,
                     address: formData.address,
                     password: formData.password,
+                    adminSecret: formData.adminSecret || undefined,
                 });
             }
             onLogin(data.user);
@@ -168,6 +170,20 @@ export default function Auth({ onLogin }) {
                             {formData.confirmPassword && formData.password !== formData.confirmPassword && (
                                 <span className="field-error">Passwords do not match</span>
                             )}
+                        </div>
+                    )}
+
+                    {!isLogin && (
+                        <div className="form-group">
+                            <label className="form-label">Admin setup code (optional)</label>
+                            <input
+                                type="password"
+                                className="form-input"
+                                placeholder="Only if setting up the first admin account"
+                                value={formData.adminSecret}
+                                onChange={(e) => update('adminSecret', e.target.value)}
+                                autoComplete="off"
+                            />
                         </div>
                     )}
 

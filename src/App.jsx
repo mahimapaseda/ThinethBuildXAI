@@ -42,12 +42,15 @@ export default function App() {
   const [showAuth, setShowAuth] = useState(false);
   const [showAdmin, setShowAdmin] = useState(false);
 
-  // Load stored API key on mount
+  // Load stored API key on mount (or dev env fallback)
   useEffect(() => {
     const storedKey = localStorage.getItem('buildx_api_key');
-    if (storedKey) {
-      setApiKey(storedKey);
-      initializeGemini(storedKey);
+    const envKey = import.meta.env.VITE_GEMINI_API_KEY;
+    const key = storedKey || envKey;
+    if (key) {
+      if (!storedKey && envKey) localStorage.setItem('buildx_api_key', envKey);
+      setApiKey(key);
+      initializeGemini(key);
     }
     // Restore user session
     const storedUser = getStoredUser();
@@ -395,6 +398,9 @@ export default function App() {
           specs={specs}
           blueprintImage={blueprintImage}
           siteLocation={siteLocation}
+          photos={photos}
+          user={user}
+          onRequestLogin={() => setShowAuth(true)}
           onNewProject={handleNewProject}
           onRefine={handleRefine}
         />

@@ -339,6 +339,7 @@ CRITICAL JSON RULES (MUST FOLLOW OR SYSTEM WILL CRASH):
       console.warn('API ERROR FALLBACK: Returning mock data due to quota limits.');
       // Return a robust mock object if we hit the quota limit.
       return {
+        _isMockFallback: true,
         siteAssessment: {
           soilNature: "Simulated Sand/Clay soil mixture. Estimated bearing capacity of 150 kN/m².",
           terrainAnalysis: "Flat terrain with good natural drainage.",
@@ -536,7 +537,9 @@ CRITICAL JSON RULES (MUST FOLLOW OR SYSTEM WILL CRASH):
 export async function generateBlueprintImage(specs, analysis) {
   if (!genAI) throw new Error('Gemini not initialized.');
 
-  const foundationType = analysis.foundationRecommendation?.type || 'strip foundation';
+  const foundationType = analysis.foundationEngineering?.recommendedType
+    || analysis.foundationRecommendation?.type
+    || 'strip foundation';
   const wallDesc = specs.wallType === 'concrete_block' ? 'concrete block' : specs.wallType;
   const description = specs.description || 'residential building';
 
