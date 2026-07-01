@@ -2,6 +2,7 @@
  * BuildX AI – Frontend API Client
  * Communicates with the Express backend for auth, users, and projects.
  */
+import { firebaseSignOut } from './firebase';
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
 
@@ -28,40 +29,38 @@ async function request(endpoint, options = {}) {
     let res;
     try {
         res = await fetch(url, config);
-    } catch (err) {
+    } catch {
         throw new Error('Failed to connect to backend server. Make sure it is running locally or deployed.');
     }
 
-    let data;
-    try {
-        data = await res.json();
-    } catch (err) {
-        throw new Error(`Invalid response from server (${res.status}). Ensure the backend is running.`);
+    let data = null;
+    const contentType = res.headers.get('content-type') || '';
+    if (contentType.includes('application/json')) {
+        try {
+            data = await res.json();
+        } catch {
+            data = null;
+        }
     }
 
     if (!res.ok) {
-        throw new Error(data.error || `Request failed (${res.status})`);
+        throw new Error(data?.error || `Request failed (${res.status}). Ensure the backend is running.`);
     }
+
+    if (data === null) {
+        throw new Error(`Invalid response from server (${res.status}). Ensure the backend is running.`);
+    }
+
     return data;
 }
 
-// ─── Auth ─────────────────────────────────────────────────────────────────────
-export async function register({ name, email, phone, address, password, adminSecret }) {
-    const data = await request('/auth/register', {
+// ─── Auth (Firebase) ──────────────────────────────────────────────────────────
+export async function syncFirebaseSession(idToken, profile = {}) {
+    const data = await request('/auth/session', {
         method: 'POST',
-        body: JSON.stringify({ name, email, phone, address, password, adminSecret }),
+        body: JSON.stringify({ idToken, ...profile }),
     });
-    localStorage.setItem('buildx_token', data.token);
-    localStorage.setItem('buildx_user', JSON.stringify(data.user));
-    return data;
-}
-
-export async function login({ email, password }) {
-    const data = await request('/auth/login', {
-        method: 'POST',
-        body: JSON.stringify({ email, password }),
-    });
-    localStorage.setItem('buildx_token', data.token);
+    localStorage.setItem('buildx_token', idToken);
     localStorage.setItem('buildx_user', JSON.stringify(data.user));
     return data;
 }
@@ -70,7 +69,12 @@ export async function getMe() {
     return request('/auth/me');
 }
 
-export function logout() {
+export async function logout() {
+    try {
+        await firebaseSignOut();
+    } catch {
+        // ignore sign-out errors
+    }
     localStorage.removeItem('buildx_token');
     localStorage.removeItem('buildx_user');
 }
@@ -90,7 +94,6 @@ export async function updateProfile({ name, phone, address }) {
         method: 'PUT',
         body: JSON.stringify({ name, phone, address }),
     });
-    // Update local storage
     const current = getStoredUser();
     if (current) {
         localStorage.setItem('buildx_user', JSON.stringify({ ...current, ...data.user }));

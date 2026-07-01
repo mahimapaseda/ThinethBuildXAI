@@ -15,6 +15,14 @@ dist-ssr
 .env.*
 !.env.example
 
+# Google OAuth client secrets (never commit)
+client_secret_*.json
+google-oauth*.json
+
+# Firebase Admin service accounts (never commit)
+*firebase-adminsdk*.json
+firebase-service-account*.json
+
 # SQLite database & uploads (never commit user data)
 server/buildx.db
 server/buildx.db-*

@@ -12,10 +12,11 @@ import { dirname, join } from 'path';
 import fs from 'fs';
 
 import {
-    createUser, getUserByEmail, getUserById, getAllUsers, updateUser, deleteUser,
+    createUser, getUserByEmail, getUserById, getUserByFirebaseUid, getAllUsers, updateUser, deleteUser,
     createProject, getProjectById, getProjectsByUser, getAllProjects, updateProject, deleteProject,
-    getDashboardStats, hasAdminUser
+    getDashboardStats, hasAdminUser, linkFirebaseAccount
 } from './db.js';
+import { initFirebaseAdmin, verifyFirebaseIdToken } from '../config/firebaseAdmin.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -40,6 +41,9 @@ function loadEnvFile(filename) {
 
 loadEnvFile('.env.local');
 loadEnvFile('.env');
+
+const firebaseAdminInit = initFirebaseAdmin(ROOT_DIR);
+const firebaseApp = firebaseAdminInit?.app || null;
 
 const isProd = process.env.NODE_ENV === 'production';
 const PORT = process.env.PORT || 3001;
@@ -127,13 +131,42 @@ const upload = multer({
 function authMiddleware(req, res, next) {
     const token = req.headers.authorization?.replace('Bearer ', '');
     if (!token) return res.status(401).json({ error: 'Authentication required' });
-    try {
-        const decoded = jwt.verify(token, JWT_SECRET);
-        const user = getUserById(decoded.userId);
+
+    const finishWithUser = (user) => {
         if (!user) return res.status(401).json({ error: 'User not found' });
         if (user.status === 'suspended') return res.status(403).json({ error: 'Account suspended' });
         req.user = user;
         next();
+    };
+
+    if (firebaseApp) {
+        verifyFirebaseIdToken(firebaseApp, token)
+            .then((decoded) => {
+                let user = getUserByFirebaseUid(decoded.uid);
+                if (!user && decoded.email) {
+                    const existing = getUserByEmail(decoded.email);
+                    if (existing) {
+                        user = existing.firebase_uid
+                            ? existing
+                            : linkFirebaseAccount(existing.id, decoded.uid);
+                    }
+                }
+                finishWithUser(user);
+            })
+            .catch(() => {
+                try {
+                    const decoded = jwt.verify(token, JWT_SECRET);
+                    finishWithUser(getUserById(decoded.userId));
+                } catch {
+                    return res.status(401).json({ error: 'Invalid or expired token' });
+                }
+            });
+        return;
+    }
+
+    try {
+        const decoded = jwt.verify(token, JWT_SECRET);
+        finishWithUser(getUserById(decoded.userId));
     } catch {
         return res.status(401).json({ error: 'Invalid or expired token' });
     }
@@ -149,47 +182,105 @@ function grantAdminOnRegister(email, adminSecret) {
     return email.toLowerCase().trim() === ADMIN_EMAIL && adminSecret === ADMIN_SECRET;
 }
 
+function toPublicUser(user) {
+    return {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        phone: user.phone,
+        address: user.address,
+        isAdmin: !!user.is_admin,
+        status: user.status,
+    };
+}
+
+function issueAuthToken(user) {
+    return jwt.sign({ userId: user.id }, JWT_SECRET, { expiresIn: '7d' });
+}
+
+function upsertUserFromFirebaseProfile(decoded, profile = {}) {
+    const email = (decoded.email || profile.email || '').toLowerCase().trim();
+    const firebaseUid = decoded.uid;
+    const displayName = profile.name || decoded.name || email.split('@')[0] || 'User';
+
+    let user = getUserByFirebaseUid(firebaseUid);
+    if (!user && email) {
+        const existing = getUserByEmail(email);
+        if (existing) {
+            if (existing.firebase_uid && existing.firebase_uid !== firebaseUid) {
+                throw new Error('This email is linked to a different account.');
+            }
+            user = existing.firebase_uid
+                ? existing
+                : linkFirebaseAccount(existing.id, firebaseUid);
+        }
+    }
+
+    if (!user) {
+        const id = 'user_' + uuidv4().replace(/-/g, '').substring(0, 12);
+        const passwordHash = bcrypt.hashSync('firebase:' + uuidv4(), 10);
+        user = createUser({
+            id,
+            name: displayName,
+            email: email || `${firebaseUid}@firebase.local`,
+            phone: profile.phone || '',
+            address: profile.address || '',
+            passwordHash,
+            firebaseUid,
+        });
+
+        const isAdminRequest = grantAdminOnRegister(email, profile.adminSecret);
+        if (isAdminRequest && !hasAdminUser()) {
+            updateUser(id, { is_admin: 1 });
+            user = getUserById(id);
+        }
+    } else {
+        const updates = {};
+        if (profile.name) updates.name = profile.name;
+        if (profile.phone) updates.phone = profile.phone;
+        if (profile.address) updates.address = profile.address;
+        if (Object.keys(updates).length) {
+            user = updateUser(user.id, updates);
+        }
+    }
+
+    return getUserById(user.id);
+}
+
 app.post('/api/auth/register', rateLimit(60_000, 10), (req, res) => {
     try {
         const { name, email, phone, address, password, adminSecret } = req.body;
+        const normalizedEmail = (email || '').toLowerCase().trim();
 
-        if (!name || !email || !password) {
+        if (!name || !normalizedEmail || !password) {
             return res.status(400).json({ error: 'Name, email, and password are required.' });
         }
         if (password.length < 8) {
             return res.status(400).json({ error: 'Password must be at least 8 characters.' });
         }
-        if (getUserByEmail(email)) {
+        if (getUserByEmail(normalizedEmail)) {
             return res.status(409).json({ error: 'An account with this email already exists.' });
         }
 
-        const isAdminRequest = grantAdminOnRegister(email, adminSecret);
+        const isAdminRequest = grantAdminOnRegister(normalizedEmail, adminSecret);
         if (isAdminRequest && hasAdminUser()) {
             return res.status(403).json({ error: 'An admin account already exists.' });
         }
 
         const passwordHash = bcrypt.hashSync(password, 10);
         const id = 'user_' + uuidv4().replace(/-/g, '').substring(0, 12);
-        createUser({ id, name, email, phone, address, passwordHash });
+        createUser({ id, name, email: normalizedEmail, phone, address, passwordHash });
 
         if (isAdminRequest) {
             updateUser(id, { is_admin: 1 });
         }
 
-        const token = jwt.sign({ userId: id }, JWT_SECRET, { expiresIn: '7d' });
         const freshUser = getUserById(id);
+        const token = issueAuthToken(freshUser);
 
         res.status(201).json({
             token,
-            user: {
-                id: freshUser.id,
-                name: freshUser.name,
-                email: freshUser.email,
-                phone: freshUser.phone,
-                address: freshUser.address,
-                isAdmin: !!freshUser.is_admin,
-                status: freshUser.status,
-            },
+            user: toPublicUser(freshUser),
         });
     } catch (err) {
         console.error('Registration error:', err);
@@ -200,11 +291,12 @@ app.post('/api/auth/register', rateLimit(60_000, 10), (req, res) => {
 app.post('/api/auth/login', rateLimit(60_000, 20), (req, res) => {
     try {
         const { email, password } = req.body;
-        if (!email || !password) {
+        const normalizedEmail = (email || '').toLowerCase().trim();
+        if (!normalizedEmail || !password) {
             return res.status(400).json({ error: 'Email and password are required.' });
         }
 
-        const user = getUserByEmail(email);
+        const user = getUserByEmail(normalizedEmail);
         if (!user || !bcrypt.compareSync(password, user.password_hash)) {
             return res.status(401).json({ error: 'Invalid email or password.' });
         }
@@ -212,18 +304,10 @@ app.post('/api/auth/login', rateLimit(60_000, 20), (req, res) => {
             return res.status(403).json({ error: 'Your account has been suspended. Please contact support.' });
         }
 
-        const token = jwt.sign({ userId: user.id }, JWT_SECRET, { expiresIn: '7d' });
+        const token = issueAuthToken(user);
         res.json({
             token,
-            user: {
-                id: user.id,
-                name: user.name,
-                email: user.email,
-                phone: user.phone,
-                address: user.address,
-                isAdmin: !!user.is_admin,
-                status: user.status,
-            },
+            user: toPublicUser(user),
         });
     } catch (err) {
         console.error('Login error:', err);
@@ -232,17 +316,37 @@ app.post('/api/auth/login', rateLimit(60_000, 20), (req, res) => {
 });
 
 app.get('/api/auth/me', authMiddleware, (req, res) => {
-    res.json({
-        user: {
-            id: req.user.id,
-            name: req.user.name,
-            email: req.user.email,
-            phone: req.user.phone,
-            address: req.user.address,
-            isAdmin: !!req.user.is_admin,
-            status: req.user.status,
-        },
-    });
+    res.json({ user: toPublicUser(req.user) });
+});
+
+app.post('/api/auth/session', rateLimit(60_000, 20), async (req, res) => {
+    try {
+        if (!firebaseApp) {
+            return res.status(503).json({
+                error: 'Firebase Auth is not configured on the server. Add firebase-adminsdk-*.json to the project root.',
+            });
+        }
+
+        const { idToken, name, phone, address, adminSecret } = req.body;
+        if (!idToken) {
+            return res.status(400).json({ error: 'Firebase ID token is required.' });
+        }
+
+        const decoded = await verifyFirebaseIdToken(firebaseApp, idToken);
+        if (decoded.email_verified === false) {
+            return res.status(403).json({ error: 'Please verify your email before signing in.' });
+        }
+
+        const user = upsertUserFromFirebaseProfile(decoded, { name, phone, address, adminSecret });
+        if (user.status === 'suspended') {
+            return res.status(403).json({ error: 'Your account has been suspended. Please contact support.' });
+        }
+
+        res.json({ user: toPublicUser(user) });
+    } catch (err) {
+        console.error('Firebase session error:', err);
+        res.status(401).json({ error: err.message || 'Sign-in failed. Please try again.' });
+    }
 });
 
 app.put('/api/users/profile', authMiddleware, (req, res) => {
@@ -414,6 +518,13 @@ app.delete('/api/admin/projects/:id', authMiddleware, adminMiddleware, (req, res
 app.listen(PORT, () => {
     console.log(`\n🏗️  BuildX AI Backend running on http://localhost:${PORT}`);
     console.log(`   API: http://localhost:${PORT}/api`);
-    if (!isProd) console.log(`   CORS: ${corsOrigins.length ? corsOrigins.join(', ') : 'all origins (dev)'}\n`);
+    if (!isProd) console.log(`   CORS: ${corsOrigins.length ? corsOrigins.join(', ') : 'all origins (dev)'}`);
+    if (firebaseApp) {
+        const fileLabel = firebaseAdminInit?.sourceFile?.split(/[/\\]/).pop();
+        console.log(`   Firebase Auth: configured${fileLabel ? ` (${fileLabel})` : ''}`);
+    } else {
+        console.log('   Firebase Auth: not configured — add firebase-adminsdk-*.json');
+    }
+    if (!isProd) console.log('');
     else console.log('');
 });

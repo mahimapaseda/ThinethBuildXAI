@@ -48,18 +48,52 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
 `);
 
+// Migration: Google OAuth
+try {
+  db.exec(`ALTER TABLE users ADD COLUMN google_id TEXT`);
+} catch {
+  // column already exists
+}
+db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_google_id ON users(google_id) WHERE google_id IS NOT NULL`);
+
+// Migration: Firebase Auth
+try {
+  db.exec(`ALTER TABLE users ADD COLUMN firebase_uid TEXT`);
+} catch {
+  // column already exists
+}
+db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_firebase_uid ON users(firebase_uid) WHERE firebase_uid IS NOT NULL`);
+
 // ─── User Operations ──────────────────────────────────────────────────────────
-export function createUser({ id, name, email, phone, address, passwordHash }) {
+export function createUser({ id, name, email, phone, address, passwordHash, googleId = null, firebaseUid = null }) {
     const stmt = db.prepare(`
-    INSERT INTO users (id, name, email, phone, address, password_hash)
-    VALUES (?, ?, ?, ?, ?, ?)
+    INSERT INTO users (id, name, email, phone, address, password_hash, google_id, firebase_uid)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
   `);
-    stmt.run(id, name, email, phone || '', address || '', passwordHash);
+    stmt.run(id, name, email.toLowerCase().trim(), phone || '', address || '', passwordHash, googleId, firebaseUid);
     return getUserById(id);
 }
 
 export function getUserByEmail(email) {
-    return db.prepare('SELECT * FROM users WHERE email = ?').get(email);
+    return db.prepare('SELECT * FROM users WHERE email = ?').get(email.toLowerCase().trim());
+}
+
+export function getUserByGoogleId(googleId) {
+    return db.prepare('SELECT * FROM users WHERE google_id = ?').get(googleId);
+}
+
+export function linkGoogleAccount(userId, googleId) {
+    db.prepare(`UPDATE users SET google_id = ?, updated_at = datetime('now') WHERE id = ?`).run(googleId, userId);
+    return getUserById(userId);
+}
+
+export function getUserByFirebaseUid(firebaseUid) {
+    return db.prepare('SELECT * FROM users WHERE firebase_uid = ?').get(firebaseUid);
+}
+
+export function linkFirebaseAccount(userId, firebaseUid) {
+    db.prepare(`UPDATE users SET firebase_uid = ?, updated_at = datetime('now') WHERE id = ?`).run(firebaseUid, userId);
+    return getUserById(userId);
 }
 
 export function hasAdminUser() {
@@ -86,7 +120,7 @@ export function updateUser(id, updates) {
     const fields = [];
     const values = [];
     for (const [key, val] of Object.entries(updates)) {
-        if (['name', 'phone', 'address', 'status', 'is_admin'].includes(key)) {
+        if (['name', 'phone', 'address', 'status', 'is_admin', 'google_id', 'firebase_uid'].includes(key)) {
             fields.push(`${key} = ?`);
             values.push(val);
         }

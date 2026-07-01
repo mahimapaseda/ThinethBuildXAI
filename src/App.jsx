@@ -175,8 +175,8 @@ export default function App() {
     setShowAuth(false);
   };
 
-  const handleLogout = () => {
-    apiLogout();
+  const handleLogout = async () => {
+    await apiLogout();
     setUser(null);
     setShowAdmin(false);
     setPhase(PHASES.WELCOME);

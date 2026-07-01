@@ -1,5 +1,12 @@
-import React, { useState, useEffect } from 'react';
-import { register, login } from '../services/api';
+import React, { useState, useEffect, useCallback } from 'react';
+import {
+  signInWithGoogle,
+  signInWithEmail,
+  signUpWithEmail,
+  isFirebaseConfigured,
+  mapFirebaseAuthError,
+} from '../services/firebase';
+import { syncFirebaseSession } from '../services/api';
 
 const PROMO_SLIDES = [
   {
@@ -137,7 +144,6 @@ export default function Auth({ onLogin }) {
   const [isLogin, setIsLogin] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
-  const [socialNotice, setSocialNotice] = useState('');
   const [formData, setFormData] = useState({
     email: '',
     password: '',
@@ -150,6 +156,29 @@ export default function Auth({ onLogin }) {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [passwordStrength, setPasswordStrength] = useState({ score: 0, label: '', color: '' });
+
+  const completeFirebaseAuth = useCallback(async (firebaseUser, profile = {}) => {
+    const idToken = await firebaseUser.getIdToken();
+    const data = await syncFirebaseSession(idToken, profile);
+    onLogin(data.user);
+  }, [onLogin]);
+
+  const handleGoogleClick = async () => {
+    if (!isFirebaseConfigured()) {
+      setError('Firebase is not configured. Add VITE_FIREBASE_* keys to .env.local and restart the dev server.');
+      return;
+    }
+    setLoading(true);
+    setError('');
+    try {
+      const firebaseUser = await signInWithGoogle();
+      await completeFirebaseAuth(firebaseUser);
+    } catch (err) {
+      setError(mapFirebaseAuthError(err));
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
     const saved = localStorage.getItem('buildx_remember_email');
@@ -175,17 +204,11 @@ export default function Auth({ onLogin }) {
     setFormData(prev => ({ ...prev, [field]: value }));
     if (field === 'password') setPasswordStrength(checkPasswordStrength(value));
     if (error) setError('');
-    if (socialNotice) setSocialNotice('');
-  };
-
-  const handleSocialClick = (provider) => {
-    setSocialNotice(`${provider} sign-in is coming soon. Please continue with email below.`);
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
-    setSocialNotice('');
 
     if (!formData.email || !formData.password) {
       return setError('Email and password are required.');
@@ -200,27 +223,32 @@ export default function Auth({ onLogin }) {
 
     setLoading(true);
     try {
-      let data;
+      if (!isFirebaseConfigured()) {
+        throw new Error('Firebase is not configured. Add VITE_FIREBASE_* keys to .env.local and restart the dev server.');
+      }
+
+      let firebaseUser;
       if (isLogin) {
-        data = await login({ email: formData.email, password: formData.password });
+        firebaseUser = await signInWithEmail(formData.email, formData.password);
         if (rememberMe) {
           localStorage.setItem('buildx_remember_email', formData.email);
         } else {
           localStorage.removeItem('buildx_remember_email');
         }
+        await completeFirebaseAuth(firebaseUser);
       } else {
-        data = await register({
+        firebaseUser = await signUpWithEmail(formData.email, formData.password, formData.name);
+        await completeFirebaseAuth(firebaseUser, {
           name: formData.name,
-          email: formData.email,
           phone: formData.phone,
           address: formData.address,
-          password: formData.password,
           adminSecret: formData.adminSecret || undefined,
         });
       }
-      onLogin(data.user);
     } catch (err) {
-      setError(err.message);
+      setError(err.message?.includes('Firebase is not configured')
+        ? err.message
+        : mapFirebaseAuthError(err));
     } finally {
       setLoading(false);
     }
@@ -229,7 +257,6 @@ export default function Auth({ onLogin }) {
   const toggleMode = () => {
     setIsLogin(!isLogin);
     setError('');
-    setSocialNotice('');
   };
 
   return (
@@ -244,17 +271,26 @@ export default function Auth({ onLogin }) {
           </div>
 
           <div className="auth-social-row">
-            <button type="button" className="auth-social-btn" onClick={() => handleSocialClick('Google')}>
+            <button
+              type="button"
+              className="auth-social-btn"
+              onClick={handleGoogleClick}
+              disabled={loading}
+            >
               <GoogleIcon />
               <span>Google</span>
             </button>
-            <button type="button" className="auth-social-btn" onClick={() => handleSocialClick('Facebook')}>
+            <button type="button" className="auth-social-btn" aria-disabled="true" title="Coming soon">
               <FacebookIcon />
               <span>Facebook</span>
             </button>
           </div>
 
-          {socialNotice && <p className="auth-social-notice">{socialNotice}</p>}
+          {!isFirebaseConfigured() && (
+            <p className="auth-social-notice" role="status">
+              Firebase Auth is not configured yet. Add <code>VITE_FIREBASE_*</code> keys to <code>.env.local</code>, or continue with email once configured.
+            </p>
+          )}
 
           <div className="auth-divider">
             <span>or continue with email</span>
