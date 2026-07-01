@@ -189,10 +189,6 @@ export default function App() {
         <Header
           apiKey={apiKey}
           user={user}
-          onResetKey={() => {
-            localStorage.removeItem('buildx_api_key');
-            setApiKey(null);
-          }}
           onLogout={handleLogout}
           onAdminPanel={() => setShowAdmin(true)}
           onLoginClick={() => setShowAuth(true)}
@@ -209,10 +205,6 @@ export default function App() {
         <Header
           apiKey={apiKey}
           user={user}
-          onResetKey={() => {
-            localStorage.removeItem('buildx_api_key');
-            setApiKey(null);
-          }}
           onLogout={handleLogout}
           onAdminPanel={() => setShowAdmin(true)}
           onLoginClick={() => setShowAuth(true)}
@@ -227,11 +219,6 @@ export default function App() {
       <Header
         apiKey={apiKey}
         user={user}
-        onResetKey={() => {
-          localStorage.removeItem('buildx_api_key');
-          setApiKey(null);
-          setPhase(PHASES.WELCOME);
-        }}
         onLogout={handleLogout}
         onAdminPanel={() => setShowAdmin(true)}
         onLoginClick={() => setShowAuth(true)}

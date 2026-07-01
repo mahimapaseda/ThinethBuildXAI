@@ -131,7 +131,7 @@ async function callWithFallback(callFn, maxRetries = 3) {
 
         // Auth error → don't retry, throw immediately
         if (msg.includes('API_KEY_INVALID') || msg.includes('401') || msg.includes('403') || msg.toLowerCase().includes('expired')) {
-          throw new Error('API key has expired or is invalid. Please reset your key in the header and try again.');
+          throw new Error('API key has expired or is invalid. Please enter a new key to continue.');
         }
 
         // Rate limit / quota → check if retryable or if daily quota is fully exhausted
@@ -175,7 +175,7 @@ async function callWithFallback(callFn, maxRetries = 3) {
   if (hadDailyExhaustion) {
     throw new Error(
       `Your API key's daily free quota is fully used up for today.\n\n` +
-      `💡 Fix: Go to aistudio.google.com/apikey → click "Create API key" → select "Create API key in new project" → paste the new key using the Reset Key button above.\n\n` +
+      `💡 Fix: Go to aistudio.google.com/apikey → click "Create API key" → select "Create API key in new project" → paste the new key in the app.\n\n` +
       `Daily quotas reset at midnight Pacific Time (UTC-8).`
     );
   }

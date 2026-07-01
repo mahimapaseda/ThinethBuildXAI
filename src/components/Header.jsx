@@ -1,7 +1,7 @@
 import React from 'react';
 import ThemeToggle from './ThemeToggle';
 
-export default function Header({ apiKey, user, onResetKey, onLogout, onAdminPanel, onLoginClick }) {
+export default function Header({ apiKey, user, onLogout, onAdminPanel, onLoginClick }) {
   return (
     <header className="header">
       <div className="header-inner">
@@ -44,12 +44,6 @@ export default function Header({ apiKey, user, onResetKey, onLogout, onAdminPane
               </button>
             )}
 
-            {apiKey && (
-              <button type="button" className="btn btn-ghost btn-header-reset" onClick={onResetKey}>
-                <span className="btn-reset-full">Reset Key</span>
-                <span className="btn-reset-short" aria-hidden="true">↺</span>
-              </button>
-            )}
           </div>
         </div>
       </div>
